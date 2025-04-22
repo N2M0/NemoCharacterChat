@@ -1,7 +1,8 @@
 package com.squaredream.nemocharacterchat.ui.screens
-
-import android.view.WindowManager
 import androidx.compose.foundation.Image
+import com.squaredream.nemocharacterchat.data.GeminiChatService
+import kotlinx.coroutines.delay
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,31 +23,31 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.zIndex
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation.NavController
 import com.squaredream.nemocharacterchat.R
 import com.squaredream.nemocharacterchat.data.Character
 import com.squaredream.nemocharacterchat.data.Message
 import com.squaredream.nemocharacterchat.data.MessageType
+import com.squaredream.nemocharacterchat.data.PreferencesManager
 import kotlinx.coroutines.launch
 
 @Composable
 fun ChatScreen(navController: NavController, characterId: String) {
     // 키보드 상태 관찰
     val keyboardController = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
+    val preferencesManager = remember { PreferencesManager(context) }
 
     // 현재 선택된 캐릭터 정보 가져오기 (기존 로직 동일)
     val character = when(characterId) {
+        "gemini" -> Character(
+            id = "gemini",
+            name = "Gemini",
+            profileImage = R.drawable.gemini // Gemini 아이콘 리소스 필요
+        )
         "raiden" -> Character(
             id = "raiden",
             name = "라이덴 쇼군",
@@ -60,13 +61,16 @@ fun ChatScreen(navController: NavController, characterId: String) {
         else -> Character(
             id = "unknown",
             name = "알 수 없음",
-            profileImage = R.drawable.raiden // 기본 이미지
+            profileImage = R.drawable.raiden
         )
     }
 
     // 채팅 메시지 상태 관리 (기존 로직 동일)
     val messages = remember {
         when(characterId) {
+            "gemini" -> mutableStateListOf(
+                Message("1", "안녕하세요! 저는 Gemini입니다. 무엇을 도와드릴까요?", "방금 전", MessageType.RECEIVED, "Gemini")
+            )
             "raiden" -> mutableStateListOf(
                 Message("1", "여행자, 무슨 용건이지?", "오후 3:30", MessageType.RECEIVED, "라이덴 쇼군"),
                 Message("2", "이나즈마에 오신 것을 환영해요.", "오후 3:31", MessageType.RECEIVED, "라이덴 쇼군"),
@@ -89,7 +93,9 @@ fun ChatScreen(navController: NavController, characterId: String) {
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
 
-    // 새 메시지 전송 함수 (기존 로직과 거의 동일)
+    var isLoading by remember { mutableStateOf(false) }
+
+    // 새 메시지 전송 함수 (제미나이 AI전송)
     fun sendMessage() {
         if (newMessageText.isBlank()) return
 
@@ -114,15 +120,29 @@ fun ChatScreen(navController: NavController, characterId: String) {
             scrollState.animateScrollToItem(messages.size - 1)
         }
 
-        // 자동 응답 (데모용)
+        // Gemini API 사용 또는 자동 응답 처리
         coroutineScope.launch {
-            kotlinx.coroutines.delay(1000)
+            isLoading = true
 
-            val responseText = when(characterId) {
-                "raiden" -> listOf("흥미롭군요.", "여행자, 이나즈마의 영원함을 느껴보세요.", "그것도 영원의 한 순간이 되겠군요.").random()
-                "furina" -> listOf("와아~ 정말 재밌네요!", "당신과 대화하는 건 언제나 즐거워요~", "다음 파티에도 꼭 초대할게요!").random()
-                else -> "..."
+            // Gemini 캐릭터인 경우 API 사용
+            val responseText = if (characterId == "gemini") {
+                val apiKey = preferencesManager.getApiKey()
+                try {
+                    GeminiChatService.generateResponse(apiKey, textToSend, messages.dropLast(1))
+                } catch (e: Exception) {
+                    "죄송합니다. 응답을 생성하는 동안 오류가 발생했습니다."
+                }
+            } else {
+                // 기존 캐릭터들은 하드코딩된 응답 사용
+                delay(1000)
+                when(characterId) {
+                    "raiden" -> listOf("흥미롭군요.", "여행자, 이나즈마의 영원함을 느껴보세요.", "그것도 영원의 한 순간이 되겠군요.").random()
+                    "furina" -> listOf("와아~ 정말 재밌네요!", "당신과 대화하는 건 언제나 즐거워요~", "다음 파티에도 꼭 초대할게요!").random()
+                    else -> "..."
+                }
             }
+
+            isLoading = false
 
             val responseMessage = Message(
                 id = (messages.size + 1).toString(),
