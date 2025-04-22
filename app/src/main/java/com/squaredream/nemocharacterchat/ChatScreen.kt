@@ -33,21 +33,32 @@ import com.squaredream.nemocharacterchat.data.Message
 import com.squaredream.nemocharacterchat.data.MessageType
 import com.squaredream.nemocharacterchat.data.PreferencesManager
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+// 시간 포맷팅 함수 추가
+fun getCurrentTime(): String {
+    val formatter = SimpleDateFormat("a h:mm", Locale.KOREA)
+    return formatter.format(Date())
+}
 
 @Composable
 fun ChatScreen(navController: NavController, characterId: String) {
     // 키보드 상태 관찰
     val keyboardController = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val preferencesManager = remember { PreferencesManager(context) }
+    val scrollState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
 
-    // 현재 선택된 캐릭터 정보 가져오기 (기존 로직 동일)
+    // 새 메시지 입력 상태
+    var newMessageText by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+
+    // 현재 선택된 캐릭터 정보 가져오기
     val character = when(characterId) {
-        "gemini" -> Character(
-            id = "gemini",
-            name = "Gemini",
-            profileImage = R.drawable.gemini // Gemini 아이콘 리소스 필요
-        )
         "raiden" -> Character(
             id = "raiden",
             name = "라이덴 쇼군",
@@ -65,35 +76,61 @@ fun ChatScreen(navController: NavController, characterId: String) {
         )
     }
 
-    // 채팅 메시지 상태 관리 (기존 로직 동일)
-    val messages = remember {
-        when(characterId) {
-            "gemini" -> mutableStateListOf(
-                Message("1", "안녕하세요! 저는 Gemini입니다. 무엇을 도와드릴까요?", "방금 전", MessageType.RECEIVED, "Gemini")
-            )
-            "raiden" -> mutableStateListOf(
-                Message("1", "여행자, 무슨 용건이지?", "오후 3:30", MessageType.RECEIVED, "라이덴 쇼군"),
-                Message("2", "이나즈마에 오신 것을 환영해요.", "오후 3:31", MessageType.RECEIVED, "라이덴 쇼군"),
-                Message("3", "안녕하세요, 쇼군님!", "오후 3:32", MessageType.SENT, "나")
-            )
-            "furina" -> mutableStateListOf(
-                Message("1", "어머, 드디어 내 팬이 찾아왔네요~!", "오후 3:40", MessageType.RECEIVED, "푸리나"),
-                Message("2", "어서 와요! 파티를 준비했답니다~", "오후 3:41", MessageType.RECEIVED, "푸리나"),
-                Message("3", "안녕하세요, 푸리나님!", "오후 3:42", MessageType.SENT, "나")
-            )
-            else -> mutableStateListOf()
+    // 채팅 메시지 상태 관리 - 빈 리스트로 시작
+    val messages = remember { mutableStateListOf<Message>() }
+
+    // 초기화 상태
+    var isInitializing by remember { mutableStateOf(true) }
+
+    // 캐릭터 초기화
+    LaunchedEffect(characterId) {
+        // 이미 메시지가 있으면 초기화 건너뛰기
+        if (messages.isNotEmpty()) {
+            isInitializing = false
+            return@LaunchedEffect
         }
+
+        isInitializing = true
+
+        try {
+            val apiKey = preferencesManager.getApiKey()
+
+            // 캐릭터 초기화 및 첫 응답 가져오기
+            val initialResponse = GeminiChatService.initializeCharacterChat(
+                apiKey = apiKey,
+                characterId = characterId
+            )
+
+            // 초기 메시지 추가
+            val initialMessage = Message(
+                id = "1",
+                text = initialResponse,
+                timestamp = getCurrentTime(), // 시간 포맷팅 함수 필요
+                type = MessageType.RECEIVED,
+                sender = character.name
+            )
+
+            messages.add(initialMessage)
+
+        } catch (e: Exception) {
+            // 오류 시 기본 메시지 추가
+            val fallbackMessage = when(characterId) {
+                "raiden" -> "여행자, 무슨 용건이지?"
+                "furina" -> "어머, 드디어 내 팬이 찾아왔네요~! 파티를 준비했답니다~"
+                else -> "안녕하세요."
+            }
+
+            messages.add(Message(
+                id = "1",
+                text = fallbackMessage,
+                timestamp = getCurrentTime(),
+                type = MessageType.RECEIVED,
+                sender = character.name
+            ))
+        }
+
+        isInitializing = false
     }
-
-    // 새 메시지 입력 상태
-    var newMessageText by remember { mutableStateOf("") }
-
-    // 스크롤 상태 및 코루틴 스코프
-    val scrollState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
-    val focusManager = LocalFocusManager.current
-
-    var isLoading by remember { mutableStateOf(false) }
 
     // 새 메시지 전송 함수 (제미나이 AI전송)
     fun sendMessage() {
@@ -102,7 +139,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
         val userMessage = Message(
             id = (messages.size + 1).toString(),
             text = newMessageText,
-            timestamp = "지금", // 실제로는 시간 포맷팅 필요
+            timestamp = getCurrentTime(),
             type = MessageType.SENT,
             sender = "나"
         )
@@ -120,34 +157,30 @@ fun ChatScreen(navController: NavController, characterId: String) {
             scrollState.animateScrollToItem(messages.size - 1)
         }
 
-        // Gemini API 사용 또는 자동 응답 처리
+        // Gemini API 사용
         coroutineScope.launch {
             isLoading = true
 
-            // Gemini 캐릭터인 경우 API 사용
-            val responseText = if (characterId == "gemini") {
-                val apiKey = preferencesManager.getApiKey()
-                try {
-                    GeminiChatService.generateResponse(apiKey, textToSend, messages.dropLast(1))
-                } catch (e: Exception) {
-                    "죄송합니다. 응답을 생성하는 동안 오류가 발생했습니다."
-                }
-            } else {
-                // 기존 캐릭터들은 하드코딩된 응답 사용
-                delay(1000)
-                when(characterId) {
-                    "raiden" -> listOf("흥미롭군요.", "여행자, 이나즈마의 영원함을 느껴보세요.", "그것도 영원의 한 순간이 되겠군요.").random()
-                    "furina" -> listOf("와아~ 정말 재밌네요!", "당신과 대화하는 건 언제나 즐거워요~", "다음 파티에도 꼭 초대할게요!").random()
-                    else -> "..."
-                }
+            // API 호출 및 응답 생성
+            val apiKey = preferencesManager.getApiKey()
+            val responseText = try {
+                GeminiChatService.generateResponse(
+                    apiKey = apiKey,
+                    userMessage = textToSend,
+                    chatHistory = messages.dropLast(1),
+                    characterId = characterId // 캐릭터 ID 전달
+                )
+            } catch (e: Exception) {
+                "죄송합니다. 티바트에서 응답을 적어주지 않네요."
             }
 
             isLoading = false
 
+            // 응답 메시지 추가
             val responseMessage = Message(
                 id = (messages.size + 1).toString(),
                 text = responseText,
-                timestamp = "지금", // 실제로는 시간 포맷팅 필요
+                timestamp = getCurrentTime(),
                 type = MessageType.RECEIVED,
                 sender = character.name
             )
@@ -158,7 +191,6 @@ fun ChatScreen(navController: NavController, characterId: String) {
         }
     }
 
-    // --- 훨씬 간단한 구조로 수정 ---
     Column(modifier = Modifier.fillMaxSize()) {
         // 1. 상단 앱바 - 고정 위치
         TopAppBar(
@@ -258,6 +290,18 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     }
                 }
             }
+
+            // 로딩 또는 초기화 중 표시
+            if (isLoading || isInitializing) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(Color.Black.copy(alpha = 0.4f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
         }
     }
 
@@ -289,7 +333,7 @@ fun MessageItem(message: Message) {
                 )
             }
         }
-        
+
         // 메시지 말풍선과 시간
         Row(
             verticalAlignment = Alignment.Bottom,
@@ -304,7 +348,7 @@ fun MessageItem(message: Message) {
                     modifier = Modifier.padding(end = 4.dp, bottom = 4.dp)
                 )
             }
-            
+
             // 메시지 말풍선
             Box(
                 modifier = Modifier
@@ -329,7 +373,7 @@ fun MessageItem(message: Message) {
                     color = Color.Black
                 )
             }
-            
+
             // 상대방이 보낸 메시지일 경우 시간이 오른쪽에 위치
             if (message.type == MessageType.RECEIVED) {
                 Text(
