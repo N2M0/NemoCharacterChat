@@ -38,7 +38,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// 시간 포맷팅 함수 추가
+// 시간 포맷팅 함수 - 전역 유틸리티 함수로 선언
 fun getCurrentTime(): String {
     val formatter = SimpleDateFormat("a h:mm", Locale.KOREA)
     return formatter.format(Date())
@@ -46,22 +46,28 @@ fun getCurrentTime(): String {
 
 @Composable
 fun ChatScreen(navController: NavController, characterId: String) {
-    // 키보드 상태 관찰
-    val keyboardController = LocalSoftwareKeyboardController.current
+    // ===== 컨텍스트 및 상태 관리 =====
+    // 시스템 서비스
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val preferencesManager = remember { PreferencesManager(context) }
+
+    // 스크롤 상태
     val scrollState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    var internalChatHistory by remember { mutableStateOf<List<Message>>(emptyList()) }
 
-    // 새 메시지 입력 상태
+    // 채팅 상태
+    val messages = remember { mutableStateListOf<Message>() }
+    var internalChatHistory by remember { mutableStateOf<List<Message>>(emptyList()) }
     var newMessageText by remember { mutableStateOf("") }
+
+    // 로딩 상태
     var isLoading by remember { mutableStateOf(false) }
     var isInitializing by remember { mutableStateOf(true) }
     var placeholderText by remember { mutableStateOf("티바트에 연결 중입니다...") }
 
-    // 현재 선택된 캐릭터 정보 가져오기
+    // ===== 캐릭터 정보 =====
     val character = when(characterId) {
         "raiden" -> Character(
             id = "raiden",
@@ -80,11 +86,9 @@ fun ChatScreen(navController: NavController, characterId: String) {
         )
     }
 
-    // 채팅 메시지 상태 관리 - 빈 리스트로 시작
-    val messages = remember { mutableStateListOf<Message>() }
-
-    // 캐릭터 초기화
+    // ===== 초기화 로직 =====
     LaunchedEffect(characterId) {
+        // 이미 메시지가 있으면 초기화 건너뛰기
         if (messages.isNotEmpty()) {
             isInitializing = false
             placeholderText = "메시지 입력"
@@ -103,7 +107,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
             // 첫 번째 교환 수행 (UI에 표시하지 않음)
             val (userMessage, aiResponse) = GeminiChatService.performInitialExchange(apiKey, characterId)
 
-            // 내부 메시지 목록에 추가 (UI에는 표시하지 않음)
+            // 내부 메시지 목록에 추가
             internalMessages.add(Message(
                 id = "internal_1",
                 text = userMessage,
@@ -129,7 +133,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 sender = "티바트 시스템"
             ))
 
-            // 내부 메시지를 별도로 저장
+            // 내부 메시지 저장
             internalChatHistory = internalMessages.toList()
 
             // 초기화 완료
@@ -137,7 +141,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
             placeholderText = "메시지 입력"
 
         } catch (e: Exception) {
-            // 예외 발생 시 시스템 메시지만 표시
+            // 예외 발생 시 시스템 메시지 표시
             messages.add(Message(
                 id = "1",
                 text = "연결 중 오류가 발생했습니다. 다시 시도해주세요.",
@@ -151,10 +155,12 @@ fun ChatScreen(navController: NavController, characterId: String) {
         }
     }
 
-    // 새 메시지 전송 함수 (제미나이 AI전송)
+    // ===== 메시지 전송 함수 =====
     fun sendMessage() {
-        if (newMessageText.isBlank() || isLoading) return
+        // 메시지가 비어있거나 이미 로딩 중이면 무시
+        if (newMessageText.isBlank() || isLoading || isInitializing) return
 
+        // 사용자 메시지 추가
         val userMessage = Message(
             id = (messages.size + 1).toString(),
             text = newMessageText,
@@ -164,28 +170,28 @@ fun ChatScreen(navController: NavController, characterId: String) {
         )
         messages.add(userMessage)
 
-        val textToSend = newMessageText // 상태 변경 전에 값 저장
-        newMessageText = "" // 입력 필드 초기화 먼저 수행
+        val textToSend = newMessageText
+        newMessageText = ""
 
-        //로딩으로 상태 변경
+        // 로딩 상태 업데이트
         isLoading = true
         placeholderText = "상대의 답을 수신하고 있습니다..."
 
-        // 키보드 숨기기 및 포커스 제거
+        // 키보드 제어 및 포커스 해제
         keyboardController?.hide()
         focusManager.clearFocus()
 
-        // 맨 아래로 스크롤 (사용자 메시지 추가 후)
+        // 스크롤 처리
         coroutineScope.launch {
             scrollState.animateScrollToItem(messages.size - 1)
         }
 
-        // Gemini API 호출
+        // API 요청 및 응답 처리
         coroutineScope.launch {
-            // 내부 채팅 기록과 표시된 메시지를 합쳐서 전송
+            // 내부 채팅 기록과 표시된 메시지 합치기
             val fullChatHistory = internalChatHistory + messages.filter { it.sender != "티바트 시스템" }
 
-            // API 호출 및 응답 생성
+            // API 호출
             val apiKey = preferencesManager.getApiKey()
             val responseText = try {
                 GeminiChatService.generateResponse(
@@ -198,13 +204,13 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 "ERROR: 응답을 생성하는 동안 오류가 발생했습니다."
             }
 
-            // 로딩 완료 상태로 변경
+            // 로딩 상태 업데이트
             isLoading = false
             placeholderText = "메시지 입력"
 
-            // 응답이 오류인지 확인하고 적절한 메시지 추가
+            // 응답 추가
             if (responseText.startsWith("ERROR:")) {
-                // 오류 메시지를 시스템 메시지로 표시
+                // 오류 메시지 처리
                 val errorMessage = responseText.substringAfter("ERROR: ")
                 messages.add(Message(
                     id = (messages.size + 1).toString(),
@@ -214,7 +220,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     sender = "티바트 시스템"
                 ))
             } else {
-                // 정상 응답은 캐릭터 메시지로 표시
+                // 정상 응답 처리
                 messages.add(Message(
                     id = (messages.size + 1).toString(),
                     text = responseText,
@@ -224,13 +230,14 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 ))
             }
 
-            // 맨 아래로 스크롤 (응답 메시지 추가 후)
+            // 스크롤 처리
             scrollState.animateScrollToItem(messages.size - 1)
         }
     }
 
+    // ===== UI 구성 =====
     Column(modifier = Modifier.fillMaxSize()) {
-        // 1. 상단 앱바 - 고정 위치
+        // 상단 앱바
         TopAppBar(
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -255,7 +262,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
             elevation = 1.dp
         )
 
-        // 2. 채팅 콘텐츠 부분 - 키보드에 영향을 받을 부분
+        // 채팅 영역
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -269,7 +276,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     .padding(bottom = 4.dp),
                 state = scrollState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 70.dp) // 하단 입력창 높이만큼 패딩
+                contentPadding = PaddingValues(top = 8.dp, bottom = 70.dp)
             ) {
                 items(messages, key = { it.id }) { message ->
                     MessageItem(message = message)
@@ -283,7 +290,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     .align(Alignment.BottomCenter)
                     .background(Color.White)
             ) {
-                Divider(color = Color.LightGray.copy(alpha = 0.5f))
+                Divider(color = Color.Transparent)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -291,11 +298,11 @@ fun ChatScreen(navController: NavController, characterId: String) {
                         .imePadding(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 메시지 입력 필드 - 플레이스홀더 텍스트 변경
+                    // 메시지 입력 필드 - 초기화 중에도 입력 가능하게 수정
                     TextField(
                         value = newMessageText,
-                        onValueChange = { newMessageText = it },
-                        placeholder = { Text(placeholderText) }, // 동적 플레이스홀더
+                        onValueChange = { newMessageText = it }, // 항상 입력 허용
+                        placeholder = { Text(placeholderText) },
                         modifier = Modifier
                             .weight(1f)
                             .padding(end = 8.dp),
@@ -307,33 +314,33 @@ fun ChatScreen(navController: NavController, characterId: String) {
                         ),
                         shape = RoundedCornerShape(24.dp),
                         singleLine = true,
-                        enabled = !isInitializing // 초기화 중에는 비활성화
+                        enabled = true // 항상 활성화
                     )
 
-                    // 전송 버튼 - 로딩 인디케이터 추가
+                    // 전송 버튼/로딩 인디케이터
                     Box(
                         modifier = Modifier
                             .size(48.dp)
                             .background(
-                                color = if (newMessageText.isNotBlank() && !isInitializing)
+                                color = if (newMessageText.isNotBlank() && !isLoading && !isInitializing)
                                     MaterialTheme.colors.primary
                                 else Color.Gray,
                                 shape = CircleShape
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (isLoading) {
-                            // 로딩 중일 때 CircularProgressIndicator 표시
+                        if (isLoading || isInitializing) {
+                            // 로딩 중 인디케이터
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),
                                 color = Color.White,
                                 strokeWidth = 2.dp
                             )
                         } else {
-                            // 로딩 중이 아닐 때 버튼 표시
+                            // 전송 버튼
                             IconButton(
                                 onClick = { sendMessage() },
-                                enabled = newMessageText.isNotBlank() && !isInitializing,
+                                enabled = newMessageText.isNotBlank(),
                                 modifier = Modifier.matchParentSize()
                             ) {
                                 Icon(
@@ -381,11 +388,12 @@ fun MessageItem(message: Message) {
         return
     }
 
+    // 일반 메시지 처리
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (message.type == MessageType.SENT) Alignment.End else Alignment.Start
     ) {
-        // 메시지 시간 표시 (작은 텍스트)
+        // 발신자 이름 (받은 메시지의 경우)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = if (message.type == MessageType.SENT) Arrangement.End else Arrangement.Start
@@ -405,7 +413,7 @@ fun MessageItem(message: Message) {
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = if (message.type == MessageType.SENT) Arrangement.End else Arrangement.Start
         ) {
-            // 내가 보낸 메시지일 경우 시간이 왼쪽에 위치
+            // 시간 (보낸 메시지)
             if (message.type == MessageType.SENT) {
                 Text(
                     text = message.timestamp,
@@ -440,7 +448,7 @@ fun MessageItem(message: Message) {
                 )
             }
 
-            // 상대방이 보낸 메시지일 경우 시간이 오른쪽에 위치
+            // 시간 (받은 메시지)
             if (message.type == MessageType.RECEIVED) {
                 Text(
                     text = message.timestamp,
