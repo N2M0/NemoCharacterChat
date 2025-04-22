@@ -39,6 +39,13 @@ fun ChatListScreen(navController: NavController) {
         // 채팅방 목록 데이터 (추후 실제 데이터로 교체 가능)
         val chatRooms = listOf(
             ChatRoom(
+                id = "gemini",  // 새로운 "gemini" ID 추가
+                name = "Gemini",
+                lastMessage = "안녕하세요! 무엇을 도와드릴까요?",
+                time = "방금 전",
+                profileImage = R.drawable.gemini  // Gemini 아이콘 리소스 추가 필요
+            ),
+            ChatRoom(
                 id = "raiden",
                 name = "라이덴 쇼군",
                 lastMessage = "나중에 최신 캐릭돌도 반영되며 좋겠네요",
