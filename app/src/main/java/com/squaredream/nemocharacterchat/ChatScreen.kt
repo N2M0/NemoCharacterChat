@@ -1,5 +1,4 @@
 package com.squaredream.nemocharacterchat.ui.screens
-import com.squaredream.nemocharacterchat.data.ChatHistoryManager
 import androidx.compose.foundation.Image
 import com.squaredream.nemocharacterchat.data.GeminiChatService
 import kotlinx.coroutines.delay
@@ -14,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,9 +28,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
 import com.squaredream.nemocharacterchat.R
 import com.squaredream.nemocharacterchat.data.Character
+import com.squaredream.nemocharacterchat.data.ChatHistoryManager
 import com.squaredream.nemocharacterchat.data.Message
 import com.squaredream.nemocharacterchat.data.MessageType
 import com.squaredream.nemocharacterchat.data.PreferencesManager
@@ -73,6 +75,10 @@ fun ChatScreen(navController: NavController, characterId: String) {
     var isInitializing by remember { mutableStateOf(true) }
     var placeholderText by remember { mutableStateOf("티바트에 연결 중입니다...") }
 
+    // 메뉴 및 대화상자 상태
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showConfirmationDialog by remember { mutableStateOf(false) }
+
     // 세션 복원 상태 - 저장된 메시지가 있을 때 첫 메시지 전송 시 세션 복원 필요
     var needsSessionRestoration by remember { mutableStateOf(false) }
     var savedMessagesLoaded by remember { mutableStateOf(false) }
@@ -94,6 +100,68 @@ fun ChatScreen(navController: NavController, characterId: String) {
             name = "알 수 없음",
             profileImage = R.drawable.raiden
         )
+    }
+
+    // ===== 채팅 초기화 함수 =====
+    fun resetChat() {
+        coroutineScope.launch {
+            try {
+                // 로딩 상태로 설정
+                isInitializing = true
+                placeholderText = "세계수를 조작해 기록을 바꾸는 중..."
+
+                // 메시지 목록 비우기
+                messages.clear()
+                internalChatHistory = emptyList()
+
+                // 세션 초기화
+                GeminiChatService.clearCharacterChat(characterId)
+                chatHistoryManager.clearChatHistory(characterId)
+
+                // Gemini API로 새 대화 시작
+                val apiKey = preferencesManager.getApiKey()
+                val initialResponse = GeminiChatService.performInitialExchange(apiKey, characterId)
+
+                if (initialResponse == "ERROR") {
+                    // 오류 발생 시 시스템 메시지 표시
+                    messages.add(Message(
+                        id = "1",
+                        text = "뭔가 문제가 생긴 것 같습니다",
+                        timestamp = getCurrentTime(),
+                        type = MessageType.RECEIVED,
+                        sender = "티바트 시스템"
+                    ))
+                } else {
+                    // 캐릭터의 첫 인사말을 화면에 직접 표시
+                    messages.add(Message(
+                        id = "1",
+                        text = initialResponse,
+                        timestamp = getCurrentTime(),
+                        type = MessageType.RECEIVED,
+                        sender = character.name
+                    ))
+                }
+
+                // 초기화 완료
+                isInitializing = false
+                placeholderText = "메시지 입력"
+
+                // 새 메시지로 스크롤
+                scrollState.animateScrollToItem(0)
+
+            } catch (e: Exception) {
+                Log.e("ChatScreen", "Error resetting chat: ${e.message}", e)
+                messages.add(Message(
+                    id = "1",
+                    text = "채팅을 초기화하는 중 오류가 발생했습니다",
+                    timestamp = getCurrentTime(),
+                    type = MessageType.RECEIVED,
+                    sender = "티바트 시스템"
+                ))
+                isInitializing = false
+                placeholderText = "메시지 입력"
+            }
+        }
     }
 
     // ===== 초기화 로직 =====
@@ -186,11 +254,38 @@ fun ChatScreen(navController: NavController, characterId: String) {
     DisposableEffect(characterId) {
         onDispose {
             if (messages.isNotEmpty()) {
-                coroutineScope.launch {
+                // 코루틴 컨텍스트 밖에서 호출되므로 GlobalScope 사용
+                GlobalScope.launch {
                     chatHistoryManager.saveChatHistory(characterId, messages)
                 }
             }
         }
+    }
+
+    // 확인 대화상자
+    if (showConfirmationDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmationDialog = false },
+            title = { Text("채팅 기록 초기화") },
+            text = { Text("모든 채팅 내역을 지우고 새 채팅을 시작하시겠습니까?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showConfirmationDialog = false
+                        resetChat()
+                    }
+                ) {
+                    Text("예")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showConfirmationDialog = false }
+                ) {
+                    Text("아니오")
+                }
+            }
+        )
     }
 
     // ===== 메시지 전송 함수 =====
@@ -316,7 +411,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
 
     // ===== UI 구성 =====
     Column(modifier = Modifier.fillMaxSize()) {
-        // 상단 앱바
+        // 상단 앱바 (메뉴 추가)
         TopAppBar(
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -335,6 +430,25 @@ fun ChatScreen(navController: NavController, characterId: String) {
             navigationIcon = {
                 IconButton(onClick = { navController.popBackStack() }) {
                     Icon(Icons.Filled.ArrowBack, contentDescription = "뒤로 가기")
+                }
+            },
+            actions = {
+                // 메뉴 아이콘 추가
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "메뉴")
+                }
+
+                // 드롭다운 메뉴
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    DropdownMenuItem(onClick = {
+                        menuExpanded = false
+                        showConfirmationDialog = true
+                    }) {
+                        Text("세계수를 조작해 모든 대화내역을 없애고 새 채팅을 시작하기")
+                    }
                 }
             },
             backgroundColor = Color.White,

@@ -42,15 +42,15 @@ fun ChatListScreen(navController: NavController) {
             ChatRoom(
                 id = "raiden",
                 name = "라이덴 쇼군",
-                lastMessage = "이나즈마의 번개 신",
-                time = "오후 10:49",
+                lastMessage = "이나즈마성 천수각에서 만날 수 있는 번개 신",
+                time = " ",
                 profileImage = R.drawable.raiden
             ),
             ChatRoom(
                 id = "furina",
                 name = "푸리나",
-                lastMessage = "폰타인의 물의 신?",
-                time = "오후 10:40",
+                lastMessage = "에피클레스 오페라 하우스에서 만날 수 있는 물의 신?",
+                time = "",
                 profileImage = R.drawable.furina
             )
         )
