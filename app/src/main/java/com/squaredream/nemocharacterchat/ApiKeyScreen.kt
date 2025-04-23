@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -75,6 +76,17 @@ fun ApiKeyScreen(navController: NavController) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            Text(
+                text = "직접 발급받은 Google Gemini API 키가 필요합니다.\n\nAPI 키는 aistudio.google.com/app/apikey 에서 \n무료로 발급받을 수 있습니다.",
+                style = MaterialTheme.typography.caption,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             // API 키 입력 필드
             OutlinedTextField(
                 value = apiKey,
@@ -126,9 +138,12 @@ fun ApiKeyScreen(navController: NavController) {
 
             // 안내 문구
             Text(
-                text = "Gemini API 키는 devices.google.com에서 발급받을 수 있습니다.",
+                text = "API 키에 할당된 한도를 초과할 시 예상치 못한 비용이 발생하거나\n채팅이 불가능할 수 있습니다.",
                 style = MaterialTheme.typography.caption,
-                modifier = Modifier.padding(top = 8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                textAlign = TextAlign.Center
             )
         }
     }
