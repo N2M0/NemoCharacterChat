@@ -101,7 +101,7 @@ fun MainScreen(navController: NavController) {
 
         // 주의사항 문구
         Text(
-            text = "이 앱은 원신 팬메이드 앱으로, 수익을 창출하지 않습니다.\n\n사용자가 앱을 사용하며 입력한 프롬프트와 결과물에 대한 책임은\n전적으로 사용자 본인에게 있습니다.\n\n코딩에 사용한 모델 : Claude 3.7 sonnet\n채팅용 모델 : Gemini 2.5 Flash\n제작자 : 네모난꿈",
+            text = "이 앱은 원신 팬메이드 앱으로, 수익을 창출하지 않습니다.\n\n앱을 사용하며 입력한 프롬프트와 결과물에 대한 책임은\n전적으로 사용자 본인에게 있습니다.\n\n코딩에 사용한 모델 : Claude 3.7 sonnet\n채팅용 모델 : Gemini 2.5 Flash\n제작자 : 네모난꿈",
             style = MaterialTheme.typography.caption,
             color = Color.Gray,
             textAlign = TextAlign.Center,
