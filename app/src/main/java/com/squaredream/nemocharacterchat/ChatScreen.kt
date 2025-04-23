@@ -101,40 +101,31 @@ fun ChatScreen(navController: NavController, characterId: String) {
         try {
             val apiKey = preferencesManager.getApiKey()
 
-            // 내부 메시지 리스트 (UI에 표시되지 않음)
-            val internalMessages = mutableListOf<Message>()
+            // 초기 응답 가져오기 (CHARACTER_PROMPTS만 보내고 응답 받기)
+            val initialResponse = GeminiChatService.performInitialExchange(apiKey, characterId)
 
-            // 첫 번째 교환 수행 (UI에 표시하지 않음)
-            val (userMessage, aiResponse) = GeminiChatService.performInitialExchange(apiKey, characterId)
+            if (initialResponse == "ERROR") {
+                // 오류 발생 시 시스템 메시지 표시
+                messages.add(Message(
+                    id = "1",
+                    text = "뭔가 문제가 생긴 것 같습니다",
+                    timestamp = getCurrentTime(),
+                    type = MessageType.RECEIVED,
+                    sender = "티바트 시스템"
+                ))
+            } else {
+                // 캐릭터의 첫 인사말을 화면에 직접 표시
+                messages.add(Message(
+                    id = "1",
+                    text = initialResponse,
+                    timestamp = getCurrentTime(),
+                    type = MessageType.RECEIVED,
+                    sender = character.name
+                ))
 
-            // 내부 메시지 목록에 추가
-            internalMessages.add(Message(
-                id = "internal_1",
-                text = userMessage,
-                timestamp = getCurrentTime(),
-                type = MessageType.SENT,
-                sender = "나"
-            ))
-
-            internalMessages.add(Message(
-                id = "internal_2",
-                text = aiResponse,
-                timestamp = getCurrentTime(),
-                type = MessageType.RECEIVED,
-                sender = character.name
-            ))
-
-            // UI에 표시할 시스템 메시지
-            messages.add(Message(
-                id = "1",
-                text = "티바트에 오신 것을 환영합니다.",
-                timestamp = getCurrentTime(),
-                type = MessageType.RECEIVED,
-                sender = "티바트 시스템"
-            ))
-
-            // 내부 메시지 저장
-            internalChatHistory = internalMessages.toList()
+                // 내부 대화 기록은 빈 상태로 시작 (사용자의 첫 메시지가 없으므로)
+                internalChatHistory = emptyList()
+            }
 
             // 초기화 완료
             isInitializing = false
@@ -144,7 +135,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
             // 예외 발생 시 시스템 메시지 표시
             messages.add(Message(
                 id = "1",
-                text = "연결 중 오류가 발생했습니다. 다시 시도해주세요.",
+                text = "뭔가 문제가 생긴 것 같습니다",
                 timestamp = getCurrentTime(),
                 type = MessageType.RECEIVED,
                 sender = "티바트 시스템"
@@ -221,13 +212,26 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 ))
             } else {
                 // 정상 응답 처리
-                messages.add(Message(
+                val aiResponseMessage = Message(
                     id = (messages.size + 1).toString(),
                     text = responseText,
                     timestamp = getCurrentTime(),
                     type = MessageType.RECEIVED,
                     sender = character.name
-                ))
+                )
+
+                messages.add(aiResponseMessage)
+
+                // 내부 채팅 기록 업데이트 - 최신 교환 내용 추가
+                internalChatHistory = fullChatHistory + listOf(
+                    userMessage,  // 방금 보낸 사용자 메시지
+                    aiResponseMessage  // 방금 받은 AI 응답
+                )
+
+                // 채팅 기록이 너무 길어지면 가장 오래된 메시지부터 제거
+                if (internalChatHistory.size > 20) {
+                    internalChatHistory = internalChatHistory.drop(internalChatHistory.size - 20)
+                }
             }
 
             // 스크롤 처리
@@ -353,13 +357,6 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     }
                 }
             }
-        }
-    }
-
-    // 초기 로딩 시 맨 아래로 스크롤
-    LaunchedEffect(Unit) {
-        if (messages.isNotEmpty()) {
-            scrollState.scrollToItem(messages.size - 1)
         }
     }
 }

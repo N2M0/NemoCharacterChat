@@ -117,18 +117,25 @@ class GeminiChatService {
                 val characterPrompt = CHARACTER_PROMPTS[characterId] ?: CHARACTER_PROMPTS["raiden"]!!
 
                 // 시스템 프롬프트 전송 (초기화)
-                chat.sendMessage(characterPrompt)
+                val initialResponse = chat.sendMessage(characterPrompt)
+                Log.d(TAG, "Character initialized with prompt: ${initialResponse.text?.take(50)}...")
 
-                // 채팅 기록 전송
-                val relevantMessages = chatHistory.filter { it.sender != "티바트 시스템" }
-                for (message in relevantMessages) {
-                    if (message.type == MessageType.SENT) {
-                        chat.sendMessage(message.text)
+                // 채팅 기록 전송 - 개선된 로직
+                for (message in chatHistory) {
+                    try {
+                        if (message.type == MessageType.SENT) {
+                            val resp = chat.sendMessage(message.text)
+                            Log.d(TAG, "User history message: ${message.text.take(30)}...")
+                            Log.d(TAG, "AI history response: ${resp.text?.take(30)}...")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error processing history message: ${e.message}")
+                        // 계속 진행 (개별 메시지 오류로 전체 대화가 중단되지 않도록)
                     }
-                    // 받은 메시지는 이미 AI 응답이므로 새로운 요청을 보낼 필요가 없음
                 }
 
                 // 현재 사용자 메시지 전송 및 응답 수신
+                Log.d(TAG, "Sending current user message: ${userMessage.take(30)}...")
                 val response = chat.sendMessage(userMessage)
 
                 return@withContext response.text ?: "현재, 티바트의 정보를 가져올 수 없습니다."
@@ -177,7 +184,7 @@ class GeminiChatService {
         suspend fun performInitialExchange(
             apiKey: String,
             characterId: String
-        ): Pair<String, String> = withContext(Dispatchers.IO) {
+        ): String = withContext(Dispatchers.IO) {
             try {
                 val generativeModel = GenerativeModel(
                     modelName = MODEL_NAME,
@@ -187,30 +194,19 @@ class GeminiChatService {
                 // 캐릭터 프롬프트 가져오기
                 val characterPrompt = CHARACTER_PROMPTS[characterId] ?: CHARACTER_PROMPTS["raiden"]!!
 
-                // 간단한 첫 인사 메시지
-                val initialUserMessage = "안녕하세요"
-
-                val responseName = when(characterId) {
-                    "raiden" -> "라이덴 쇼군"
-                    "furina" -> "푸리나"
-                    else -> "캐릭터"
-                }
-
-                // 프롬프트 구성
-                val prompt = "$characterPrompt\n사용자: $initialUserMessage\n$responseName: "
-
+                // 프롬프트만 보내고 다른 내용은 포함하지 않음
                 // 응답 생성
-                val response = generativeModel.generateContent(prompt)
+                val response = generativeModel.generateContent(characterPrompt)
                 val initialResponse = response.text ?: "안녕하세요, 여행자."
 
-                Log.d(TAG, "Initial exchange completed - User: $initialUserMessage, AI: $initialResponse")
+                Log.d(TAG, "Initial exchange completed - AI: $initialResponse")
 
-                // 사용자 메시지와 AI 응답을 Pair로 반환
-                return@withContext Pair(initialUserMessage, initialResponse)
+                // AI 응답만 반환
+                return@withContext initialResponse
             } catch (e: Exception) {
                 Log.e(TAG, "Error in initial exchange: ${e.message}", e)
-                // 오류 시 기본값 반환
-                return@withContext Pair("안녕하세요", "안녕하세요, 여행자.")
+                // 오류 시 ERROR 반환
+                return@withContext "ERROR"
             }
         }
     }
