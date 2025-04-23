@@ -37,25 +37,19 @@ fun ChatListScreen(navController: NavController) {
         }
     ) { paddingValues ->
         // 채팅방 목록 데이터 (추후 실제 데이터로 교체 가능)
+        // ChatListScreen.kt - chatRooms 리스트에서 Gemini 항목 제거
         val chatRooms = listOf(
-            ChatRoom(
-                id = "gemini",  // 새로운 "gemini" ID 추가
-                name = "Gemini",
-                lastMessage = "안녕하세요! 무엇을 도와드릴까요?",
-                time = "방금 전",
-                profileImage = R.drawable.gemini  // Gemini 아이콘 리소스 추가 필요
-            ),
             ChatRoom(
                 id = "raiden",
                 name = "라이덴 쇼군",
-                lastMessage = "나중에 최신 캐릭돌도 반영되며 좋겠네요",
+                lastMessage = "이나즈마의 번개 신",
                 time = "오후 10:49",
                 profileImage = R.drawable.raiden
             ),
             ChatRoom(
                 id = "furina",
                 name = "푸리나",
-                lastMessage = "파티에 초대해드릴게요~!",
+                lastMessage = "폰타인의 물의 신?",
                 time = "오후 10:40",
                 profileImage = R.drawable.furina
             )

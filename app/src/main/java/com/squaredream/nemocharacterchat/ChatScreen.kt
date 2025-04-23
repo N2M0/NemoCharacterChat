@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -33,21 +34,41 @@ import com.squaredream.nemocharacterchat.data.Message
 import com.squaredream.nemocharacterchat.data.MessageType
 import com.squaredream.nemocharacterchat.data.PreferencesManager
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+// 시간 포맷팅 함수 - 전역 유틸리티 함수로 선언
+fun getCurrentTime(): String {
+    val formatter = SimpleDateFormat("a h:mm", Locale.KOREA)
+    return formatter.format(Date())
+}
 
 @Composable
 fun ChatScreen(navController: NavController, characterId: String) {
-    // 키보드 상태 관찰
-    val keyboardController = LocalSoftwareKeyboardController.current
+    // ===== 컨텍스트 및 상태 관리 =====
+    // 시스템 서비스
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     val preferencesManager = remember { PreferencesManager(context) }
 
-    // 현재 선택된 캐릭터 정보 가져오기 (기존 로직 동일)
+    // 스크롤 상태
+    val scrollState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
+    // 채팅 상태
+    val messages = remember { mutableStateListOf<Message>() }
+    var internalChatHistory by remember { mutableStateOf<List<Message>>(emptyList()) }
+    var newMessageText by remember { mutableStateOf("") }
+
+    // 로딩 상태
+    var isLoading by remember { mutableStateOf(false) }
+    var isInitializing by remember { mutableStateOf(true) }
+    var placeholderText by remember { mutableStateOf("티바트에 연결 중입니다...") }
+
+    // ===== 캐릭터 정보 =====
     val character = when(characterId) {
-        "gemini" -> Character(
-            id = "gemini",
-            name = "Gemini",
-            profileImage = R.drawable.gemini // Gemini 아이콘 리소스 필요
-        )
         "raiden" -> Character(
             id = "raiden",
             name = "라이덴 쇼군",
@@ -65,102 +86,158 @@ fun ChatScreen(navController: NavController, characterId: String) {
         )
     }
 
-    // 채팅 메시지 상태 관리 (기존 로직 동일)
-    val messages = remember {
-        when(characterId) {
-            "gemini" -> mutableStateListOf(
-                Message("1", "안녕하세요! 저는 Gemini입니다. 무엇을 도와드릴까요?", "방금 전", MessageType.RECEIVED, "Gemini")
-            )
-            "raiden" -> mutableStateListOf(
-                Message("1", "여행자, 무슨 용건이지?", "오후 3:30", MessageType.RECEIVED, "라이덴 쇼군"),
-                Message("2", "이나즈마에 오신 것을 환영해요.", "오후 3:31", MessageType.RECEIVED, "라이덴 쇼군"),
-                Message("3", "안녕하세요, 쇼군님!", "오후 3:32", MessageType.SENT, "나")
-            )
-            "furina" -> mutableStateListOf(
-                Message("1", "어머, 드디어 내 팬이 찾아왔네요~!", "오후 3:40", MessageType.RECEIVED, "푸리나"),
-                Message("2", "어서 와요! 파티를 준비했답니다~", "오후 3:41", MessageType.RECEIVED, "푸리나"),
-                Message("3", "안녕하세요, 푸리나님!", "오후 3:42", MessageType.SENT, "나")
-            )
-            else -> mutableStateListOf()
+    // ===== 초기화 로직 =====
+    LaunchedEffect(characterId) {
+        // 이미 메시지가 있으면 초기화 건너뛰기
+        if (messages.isNotEmpty()) {
+            isInitializing = false
+            placeholderText = "메시지 입력"
+            return@LaunchedEffect
+        }
+
+        isInitializing = true
+        placeholderText = "티바트에 연결 중입니다..."
+
+        try {
+            val apiKey = preferencesManager.getApiKey()
+
+            // 내부 메시지 리스트 (UI에 표시되지 않음)
+            val internalMessages = mutableListOf<Message>()
+
+            // 첫 번째 교환 수행 (UI에 표시하지 않음)
+            val (userMessage, aiResponse) = GeminiChatService.performInitialExchange(apiKey, characterId)
+
+            // 내부 메시지 목록에 추가
+            internalMessages.add(Message(
+                id = "internal_1",
+                text = userMessage,
+                timestamp = getCurrentTime(),
+                type = MessageType.SENT,
+                sender = "나"
+            ))
+
+            internalMessages.add(Message(
+                id = "internal_2",
+                text = aiResponse,
+                timestamp = getCurrentTime(),
+                type = MessageType.RECEIVED,
+                sender = character.name
+            ))
+
+            // UI에 표시할 시스템 메시지
+            messages.add(Message(
+                id = "1",
+                text = "티바트에 오신 것을 환영합니다.",
+                timestamp = getCurrentTime(),
+                type = MessageType.RECEIVED,
+                sender = "티바트 시스템"
+            ))
+
+            // 내부 메시지 저장
+            internalChatHistory = internalMessages.toList()
+
+            // 초기화 완료
+            isInitializing = false
+            placeholderText = "메시지 입력"
+
+        } catch (e: Exception) {
+            // 예외 발생 시 시스템 메시지 표시
+            messages.add(Message(
+                id = "1",
+                text = "연결 중 오류가 발생했습니다. 다시 시도해주세요.",
+                timestamp = getCurrentTime(),
+                type = MessageType.RECEIVED,
+                sender = "티바트 시스템"
+            ))
+
+            isInitializing = false
+            placeholderText = "메시지 입력"
         }
     }
 
-    // 새 메시지 입력 상태
-    var newMessageText by remember { mutableStateOf("") }
-
-    // 스크롤 상태 및 코루틴 스코프
-    val scrollState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
-    val focusManager = LocalFocusManager.current
-
-    var isLoading by remember { mutableStateOf(false) }
-
-    // 새 메시지 전송 함수 (제미나이 AI전송)
+    // ===== 메시지 전송 함수 =====
     fun sendMessage() {
-        if (newMessageText.isBlank()) return
+        // 메시지가 비어있거나 이미 로딩 중이면 무시
+        if (newMessageText.isBlank() || isLoading || isInitializing) return
 
+        // 사용자 메시지 추가
         val userMessage = Message(
             id = (messages.size + 1).toString(),
             text = newMessageText,
-            timestamp = "지금", // 실제로는 시간 포맷팅 필요
+            timestamp = getCurrentTime(),
             type = MessageType.SENT,
             sender = "나"
         )
         messages.add(userMessage)
 
-        val textToSend = newMessageText // 상태 변경 전에 값 저장
-        newMessageText = "" // 입력 필드 초기화 먼저 수행
+        val textToSend = newMessageText
+        newMessageText = ""
 
-        // 키보드 숨기기 및 포커스 제거
+        // 로딩 상태 업데이트
+        isLoading = true
+        placeholderText = "상대의 답을 수신하고 있습니다..."
+
+        // 키보드 제어 및 포커스 해제
         keyboardController?.hide()
         focusManager.clearFocus()
 
-        // 맨 아래로 스크롤 (사용자 메시지 추가 후)
+        // 스크롤 처리
         coroutineScope.launch {
             scrollState.animateScrollToItem(messages.size - 1)
         }
 
-        // Gemini API 사용 또는 자동 응답 처리
+        // API 요청 및 응답 처리
         coroutineScope.launch {
-            isLoading = true
+            // 내부 채팅 기록과 표시된 메시지 합치기
+            val fullChatHistory = internalChatHistory + messages.filter { it.sender != "티바트 시스템" }
 
-            // Gemini 캐릭터인 경우 API 사용
-            val responseText = if (characterId == "gemini") {
-                val apiKey = preferencesManager.getApiKey()
-                try {
-                    GeminiChatService.generateResponse(apiKey, textToSend, messages.dropLast(1))
-                } catch (e: Exception) {
-                    "죄송합니다. 응답을 생성하는 동안 오류가 발생했습니다."
-                }
-            } else {
-                // 기존 캐릭터들은 하드코딩된 응답 사용
-                delay(1000)
-                when(characterId) {
-                    "raiden" -> listOf("흥미롭군요.", "여행자, 이나즈마의 영원함을 느껴보세요.", "그것도 영원의 한 순간이 되겠군요.").random()
-                    "furina" -> listOf("와아~ 정말 재밌네요!", "당신과 대화하는 건 언제나 즐거워요~", "다음 파티에도 꼭 초대할게요!").random()
-                    else -> "..."
-                }
+            // API 호출
+            val apiKey = preferencesManager.getApiKey()
+            val responseText = try {
+                GeminiChatService.generateResponse(
+                    apiKey = apiKey,
+                    userMessage = textToSend,
+                    chatHistory = fullChatHistory,
+                    characterId = characterId
+                )
+            } catch (e: Exception) {
+                "ERROR: 응답을 생성하는 동안 오류가 발생했습니다."
             }
 
+            // 로딩 상태 업데이트
             isLoading = false
+            placeholderText = "메시지 입력"
 
-            val responseMessage = Message(
-                id = (messages.size + 1).toString(),
-                text = responseText,
-                timestamp = "지금", // 실제로는 시간 포맷팅 필요
-                type = MessageType.RECEIVED,
-                sender = character.name
-            )
-            messages.add(responseMessage)
+            // 응답 추가
+            if (responseText.startsWith("ERROR:")) {
+                // 오류 메시지 처리
+                val errorMessage = responseText.substringAfter("ERROR: ")
+                messages.add(Message(
+                    id = (messages.size + 1).toString(),
+                    text = errorMessage,
+                    timestamp = getCurrentTime(),
+                    type = MessageType.RECEIVED,
+                    sender = "티바트 시스템"
+                ))
+            } else {
+                // 정상 응답 처리
+                messages.add(Message(
+                    id = (messages.size + 1).toString(),
+                    text = responseText,
+                    timestamp = getCurrentTime(),
+                    type = MessageType.RECEIVED,
+                    sender = character.name
+                ))
+            }
 
-            // 맨 아래로 스크롤 (응답 메시지 추가 후)
+            // 스크롤 처리
             scrollState.animateScrollToItem(messages.size - 1)
         }
     }
 
-    // --- 훨씬 간단한 구조로 수정 ---
+    // ===== UI 구성 =====
     Column(modifier = Modifier.fillMaxSize()) {
-        // 1. 상단 앱바 - 고정 위치
+        // 상단 앱바
         TopAppBar(
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -185,7 +262,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
             elevation = 1.dp
         )
 
-        // 2. 채팅 콘텐츠 부분 - 키보드에 영향을 받을 부분
+        // 채팅 영역
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -199,7 +276,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     .padding(bottom = 4.dp),
                 state = scrollState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 70.dp) // 하단 입력창 높이만큼 패딩
+                contentPadding = PaddingValues(top = 8.dp, bottom = 70.dp)
             ) {
                 items(messages, key = { it.id }) { message ->
                     MessageItem(message = message)
@@ -213,19 +290,19 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     .align(Alignment.BottomCenter)
                     .background(Color.White)
             ) {
-                Divider(color = Color.LightGray.copy(alpha = 0.5f))
+                Divider(color = Color.Transparent)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp, vertical = 8.dp)
-                        .imePadding(), // 여기에만 imePadding 적용
+                        .imePadding(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 메시지 입력 필드
+                    // 메시지 입력 필드 - 초기화 중에도 입력 가능하게 수정
                     TextField(
                         value = newMessageText,
-                        onValueChange = { newMessageText = it },
-                        placeholder = { Text("메시지 입력") },
+                        onValueChange = { newMessageText = it }, // 항상 입력 허용
+                        placeholder = { Text(placeholderText) },
                         modifier = Modifier
                             .weight(1f)
                             .padding(end = 8.dp),
@@ -236,25 +313,43 @@ fun ChatScreen(navController: NavController, characterId: String) {
                             cursorColor = MaterialTheme.colors.primary
                         ),
                         shape = RoundedCornerShape(24.dp),
-                        singleLine = true
+                        singleLine = true,
+                        enabled = true // 항상 활성화
                     )
 
-                    // 전송 버튼
-                    IconButton(
-                        onClick = { sendMessage() },
-                        enabled = newMessageText.isNotBlank(),
+                    // 전송 버튼/로딩 인디케이터
+                    Box(
                         modifier = Modifier
                             .size(48.dp)
                             .background(
-                                color = if (newMessageText.isNotBlank()) MaterialTheme.colors.primary else Color.Gray,
+                                color = if (newMessageText.isNotBlank() && !isLoading && !isInitializing)
+                                    MaterialTheme.colors.primary
+                                else Color.Gray,
                                 shape = CircleShape
-                            )
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Send,
-                            contentDescription = "전송",
-                            tint = Color.White
-                        )
+                        if (isLoading || isInitializing) {
+                            // 로딩 중 인디케이터
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            // 전송 버튼
+                            IconButton(
+                                onClick = { sendMessage() },
+                                enabled = newMessageText.isNotBlank(),
+                                modifier = Modifier.matchParentSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Send,
+                                    contentDescription = "전송",
+                                    tint = Color.White
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -271,11 +366,34 @@ fun ChatScreen(navController: NavController, characterId: String) {
 
 @Composable
 fun MessageItem(message: Message) {
+    // 시스템 메시지 처리
+    if (message.sender == "티바트 시스템") {
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = message.text,
+                fontSize = 12.sp,
+                color = Color.Gray,
+                modifier = Modifier
+                    .padding(vertical = 8.dp)
+                    .background(
+                        color = Color.LightGray.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+        return
+    }
+
+    // 일반 메시지 처리
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (message.type == MessageType.SENT) Alignment.End else Alignment.Start
     ) {
-        // 메시지 시간 표시 (작은 텍스트)
+        // 발신자 이름 (받은 메시지의 경우)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = if (message.type == MessageType.SENT) Arrangement.End else Arrangement.Start
@@ -289,13 +407,13 @@ fun MessageItem(message: Message) {
                 )
             }
         }
-        
+
         // 메시지 말풍선과 시간
         Row(
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = if (message.type == MessageType.SENT) Arrangement.End else Arrangement.Start
         ) {
-            // 내가 보낸 메시지일 경우 시간이 왼쪽에 위치
+            // 시간 (보낸 메시지)
             if (message.type == MessageType.SENT) {
                 Text(
                     text = message.timestamp,
@@ -304,7 +422,7 @@ fun MessageItem(message: Message) {
                     modifier = Modifier.padding(end = 4.dp, bottom = 4.dp)
                 )
             }
-            
+
             // 메시지 말풍선
             Box(
                 modifier = Modifier
@@ -329,8 +447,8 @@ fun MessageItem(message: Message) {
                     color = Color.Black
                 )
             }
-            
-            // 상대방이 보낸 메시지일 경우 시간이 오른쪽에 위치
+
+            // 시간 (받은 메시지)
             if (message.type == MessageType.RECEIVED) {
                 Text(
                     text = message.timestamp,
