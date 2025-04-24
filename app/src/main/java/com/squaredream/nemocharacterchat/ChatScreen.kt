@@ -55,7 +55,7 @@ fun getCurrentTime(): String {
 fun ChatScreen(navController: NavController, characterId: String) {
     // ===== 컨텍스트 및 상태 관리 =====
     // 시스템 서비스
-    val context = LocalContext.current
+    val context = LocalContext.current // Get context
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val preferencesManager = remember { PreferencesManager(context) }
@@ -120,7 +120,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
 
                 // Gemini API로 새 대화 시작
                 val apiKey = preferencesManager.getApiKey()
-                val initialResponse = GeminiChatService.performInitialExchange(apiKey, characterId)
+                val initialResponse = GeminiChatService.performInitialExchange(context, apiKey, characterId) // Pass context
 
                 if (initialResponse == "ERROR") {
                     // 오류 발생 시 시스템 메시지 표시
@@ -206,7 +206,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
             val apiKey = preferencesManager.getApiKey()
 
             // 초기 응답 가져오기 (CHARACTER_PROMPTS만 보내고 응답 받기)
-            val initialResponse = GeminiChatService.performInitialExchange(apiKey, characterId)
+            val initialResponse = GeminiChatService.performInitialExchange(context, apiKey, characterId) // Pass context
 
             if (initialResponse == "ERROR") {
                 // 오류 발생 시 시스템 메시지 표시
@@ -339,6 +339,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
 
                 // 이전 대화 내역을 모두 전송하여 컨텍스트 복원
                 val success = GeminiChatService.restoreSession(
+                    context = context, // Pass context
                     apiKey = apiKey,
                     characterId = characterId,
                     savedMessages = internalChatHistory
@@ -371,6 +372,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 var hasError = false
 
                 GeminiChatService.generateResponseStream(
+                    context = context, // Pass context
                     apiKey = apiKey,
                     userMessage = textToSend,
                     chatHistory = internalChatHistory,

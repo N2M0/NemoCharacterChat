@@ -1,10 +1,10 @@
 package com.squaredream.nemocharacterchat.data
 
-import android.provider.Settings.Global.getString
+import android.content.Context // Context 임포트
 import android.util.Log
 import com.google.ai.client.generativeai.Chat
 import com.google.ai.client.generativeai.GenerativeModel
-import com.squaredream.nemocharacterchat.R
+import com.squaredream.nemocharacterchat.R // R 클래스 임포트
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -36,8 +36,8 @@ class GeminiChatService {
         // 모델 캐싱 - API 키별로 GenerativeModel 인스턴스 재사용
         private var generativeModels = mutableMapOf<String, GenerativeModel>()
 
-        // 캐릭터별 프롬프트 템플릿
-        private val CHARACTER_PROMPTS = mapOf(
+        // 캐릭터별 프롬프트 템플릿 리소스 ID 맵 (직접 문자열 대신 리소스 ID 저장)
+        private val CHARACTER_PROMPT_RES_IDS = mapOf(
             "raiden" to R.string.raiden_prompt,
             "furina" to R.string.furina_prompt
         )
@@ -77,6 +77,15 @@ class GeminiChatService {
         }
 
         /**
+         * 리소스 ID를 사용하여 캐릭터 프롬프트 문자열을 가져옵니다.
+         */
+        private fun getCharacterPrompt(context: Context, characterId: String): String {
+            val promptResId = CHARACTER_PROMPT_RES_IDS[characterId] ?: R.string.raiden_prompt // Default to Raiden if not found
+            return context.getString(promptResId)
+        }
+
+
+        /**
          * API 키가 유효한지 테스트합니다.
          */
         suspend fun testApiKey(apiKey: String): Boolean = withContext(Dispatchers.IO) {
@@ -100,6 +109,7 @@ class GeminiChatService {
          * 비동기 처리 최적화 버전
          */
         suspend fun performInitialExchange(
+            context: Context, // Context 매개변수 추가
             apiKey: String,
             characterId: String
         ): String = withContext(Dispatchers.IO) {
@@ -120,7 +130,7 @@ class GeminiChatService {
 
                     // 3. 프롬프트 준비 (비동기)
                     val promptJob = async {
-                        CHARACTER_PROMPTS[characterId] ?: CHARACTER_PROMPTS["raiden"]!!
+                        getCharacterPrompt(context, characterId) // Context를 사용하여 프롬프트 가져오기
                     }
 
                     // 작업 완료 대기
@@ -183,6 +193,7 @@ class GeminiChatService {
          * 이미 초기화된 세션이 있다면 재사용하고, 없으면 새로 생성합니다.
          */
         private suspend fun initializeCharacterChat(
+            context: Context, // Context 매개변수 추가
             apiKey: String,
             characterId: String,
             forceReinitialize: Boolean = false
@@ -227,7 +238,7 @@ class GeminiChatService {
                 val generativeModel = getOrCreateModel(apiKey)
 
                 // 캐릭터 프롬프트 가져오기
-                val characterPrompt = CHARACTER_PROMPTS[characterId] ?: CHARACTER_PROMPTS["raiden"]!!
+                val characterPrompt = getCharacterPrompt(context, characterId) // Context를 사용하여 프롬프트 가져오기
 
                 // 새 채팅 세션 시작
                 val chat = generativeModel.startChat()
@@ -268,6 +279,7 @@ class GeminiChatService {
          * 비동기 처리 최적화 버전
          */
         suspend fun restoreSession(
+            context: Context, // Context 매개변수 추가
             apiKey: String,
             characterId: String,
             savedMessages: List<Message>
@@ -279,7 +291,7 @@ class GeminiChatService {
                 coroutineScope {
                     // 1. 세션 초기화 작업 시작 (비동기)
                     val initJob = async {
-                        initializeCharacterChat(apiKey, characterId, forceReinitialize = true)
+                        initializeCharacterChat(context, apiKey, characterId, forceReinitialize = true) // Context 전달
                     }
 
                     // 2. 복원할 메시지 필터링 작업 (비동기)
@@ -336,6 +348,7 @@ class GeminiChatService {
          * 사용자 메시지에 대한 응답을 생성합니다. (스트리밍 방식 비동기 최적화)
          */
         suspend fun generateResponseStream(
+            context: Context, // Context 매개변수 추가
             apiKey: String,
             userMessage: String,
             chatHistory: List<Message> = emptyList(),
@@ -346,7 +359,7 @@ class GeminiChatService {
                 coroutineScope {
                     // 세션 초기화를 비동기로 시작
                     val chatJob = async(Dispatchers.IO) {
-                        initializeCharacterChat(apiKey, characterId)
+                        initializeCharacterChat(context, apiKey, characterId) // Context 전달
                     }
 
                     // 초기 응답 상태 전송
