@@ -126,7 +126,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     // 오류 발생 시 시스템 메시지 표시
                     messages.add(Message(
                         id = "1",
-                        text = "뭔가 문제가 생긴 것 같습니다",
+                        text = "지맥 오류가 생겼습니다. 초기화를 다시 시도해주세요.",
                         timestamp = getCurrentTime(),
                         type = MessageType.RECEIVED,
                         sender = "티바트 시스템"
@@ -153,7 +153,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 Log.e("ChatScreen", "Error resetting chat: ${e.message}", e)
                 messages.add(Message(
                     id = "1",
-                    text = "채팅을 초기화하는 중 오류가 발생했습니다",
+                    text = "지맥 오류가 생겼습니다. 초기화를 다시 시도해주세요.",
                     timestamp = getCurrentTime(),
                     type = MessageType.RECEIVED,
                     sender = "티바트 시스템"
@@ -212,7 +212,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 // 오류 발생 시 시스템 메시지 표시
                 messages.add(Message(
                     id = "1",
-                    text = "뭔가 문제가 생긴 것 같습니다",
+                    text = "지맥 오류 발생! 우측 상단 메뉴의 초기화 기능을 사용해주세요.",
                     timestamp = getCurrentTime(),
                     type = MessageType.RECEIVED,
                     sender = "티바트 시스템"
@@ -239,7 +239,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
             // 예외 발생 시 시스템 메시지 표시
             messages.add(Message(
                 id = "1",
-                text = "뭔가 문제가 생긴 것 같습니다",
+                text = "지맥 오류 발생! 우측 상단 메뉴의 초기화 기능을 사용해주세요.",
                 timestamp = getCurrentTime(),
                 type = MessageType.RECEIVED,
                 sender = "티바트 시스템"
@@ -266,8 +266,8 @@ fun ChatScreen(navController: NavController, characterId: String) {
     if (showConfirmationDialog) {
         AlertDialog(
             onDismissRequest = { showConfirmationDialog = false },
-            title = { Text("채팅 기록 초기화") },
-            text = { Text("모든 채팅 내역을 지우고 새 채팅을 시작하시겠습니까?") },
+            title = { Text("세계수를 조작해 채팅 기록 초기화") },
+            text = { Text("모든 채팅 기록을 지우고\n새 채팅을 시작하시겠습니까?") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -483,7 +483,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                         menuExpanded = false
                         showConfirmationDialog = true
                     }) {
-                        Text("세계수를 조작해 모든 대화내역을 없애고 새 채팅을 시작하기")
+                        Text("채팅 초기화")
                     }
                 }
             },
