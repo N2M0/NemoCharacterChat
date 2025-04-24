@@ -68,7 +68,7 @@ fun MainScreen(navController: NavController) {
         Button(
             onClick = {
                 if (preferencesManager.isKeySet()) {
-                    navController.navigate("chat_list_screen")
+                    navController.navigate("loading_screen")
                 } else {
                     Toast.makeText(
                         context,

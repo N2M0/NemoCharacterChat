@@ -3,6 +3,7 @@ package com.squaredream.nemocharacterchat
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
@@ -13,8 +14,11 @@ import androidx.navigation.compose.rememberNavController
 import com.squaredream.nemocharacterchat.ui.screens.ApiKeyScreen
 import com.squaredream.nemocharacterchat.ui.screens.ChatListScreen
 import com.squaredream.nemocharacterchat.ui.screens.ChatScreen
+import com.squaredream.nemocharacterchat.ui.screens.LoadingScreen
 import com.squaredream.nemocharacterchat.ui.screens.MainScreen
 import com.squaredream.nemocharacterchat.ui.theme.NemoCharacterChatTheme
+import kotlinx.coroutines.delay
+import com.squaredream.nemocharacterchat.data.GeminiChatService // Import GeminiChatService
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,6 +29,16 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colors.background
                 ) {
+                    // 주기적으로 사용되지 않는 채팅 세션 정리
+                    LaunchedEffect(Unit) {
+                        while (true) {
+                            // 30분마다 세션 정리 (필요에 따라 시간 간격 조정)
+                            delay(30 * 60 * 1000L)
+                            GeminiChatService.cleanupUnusedSessions()
+                        }
+                    }
+
+                    // 네비게이션 호스트
                     val navController = rememberNavController()
 
                     NavHost(
@@ -33,6 +47,9 @@ class MainActivity : ComponentActivity() {
                     ) {
                         composable("main_screen") {
                             MainScreen(navController = navController)
+                        }
+                        composable("loading_screen") {
+                            LoadingScreen(navController = navController) // <-- 여기서 navController 전달
                         }
                         composable("chat_list_screen") {
                             ChatListScreen(navController = navController)
