@@ -41,6 +41,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.util.Log
+import androidx.compose.ui.focus.onFocusChanged
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import java.text.SimpleDateFormat
@@ -56,6 +57,8 @@ fun getCurrentTime(): String {
 @Composable
 fun ChatScreen(navController: NavController, characterId: String) {
     // ===== 컨텍스트 및 상태 관리 =====
+    var isTextFieldFocused by remember { mutableStateOf(false) }
+
     // 시스템 서비스
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -84,6 +87,13 @@ fun ChatScreen(navController: NavController, characterId: String) {
     // 세션 복원 상태 - 저장된 메시지가 있을 때 첫 메시지 전송 시 세션 복원 필요
     var needsSessionRestoration by remember { mutableStateOf(false) }
     var savedMessagesLoaded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isTextFieldFocused) {
+        if (isTextFieldFocused && messages.isNotEmpty()) {
+            delay(100) // 0.1초 지연
+            scrollState.animateScrollToItem(messages.size - 1)
+        }
+    }
 
     // ===== 캐릭터 정보 =====
     val character = when(characterId) {
@@ -679,14 +689,21 @@ fun sendMessage() {
                         .imePadding(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 메시지 입력 필드 - 초기화 중에도 입력 가능하게 수정
                     TextField(
                         value = newMessageText,
-                        onValueChange = { newMessageText = it }, // 항상 입력 허용
+                        onValueChange = { newMessageText = it },
                         placeholder = { Text(placeholderText) },
                         modifier = Modifier
                             .weight(1f)
-                            .padding(end = 8.dp),
+                            .padding(end = 8.dp)
+                            .onFocusChanged { state ->
+                                // 포커스 상태가 변경될 때마다 업데이트
+                                isTextFieldFocused = state.isFocused
+                                // 포커스가 사라지면 변수를 false로 명시적으로 초기화
+                                if (!state.isFocused) {
+                                    isTextFieldFocused = false
+                                }
+                            },
                         colors = TextFieldDefaults.textFieldColors(
                             backgroundColor = Color.LightGray.copy(alpha = 0.2f),
                             focusedIndicatorColor = Color.Transparent,
@@ -695,7 +712,7 @@ fun sendMessage() {
                         ),
                         shape = RoundedCornerShape(24.dp),
                         singleLine = true,
-                        enabled = true // 항상 활성화
+                        enabled = true
                     )
 
                     // 전송 버튼/로딩 인디케이터
