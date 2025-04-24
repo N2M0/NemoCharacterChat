@@ -41,6 +41,8 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.util.Log
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -114,6 +116,46 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 messages.clear()
                 internalChatHistory = emptyList()
 
+                // 진행 상태 메시지 목록
+                val resetMessages = listOf(
+                    "입력 중...",
+                    "지맥 상태 분석 중...",
+                    "지맥 네트워크에 침투 중...",
+                    "지맥에서 데이터 추출 중...",
+                    "추출한 데이터를 파악하는 중...",
+                    "파악한 데이터를 출력하는 중...",
+                    "오류 확인 중..."
+                )
+
+                // 초기 상태 메시지 추가
+                messages.add(Message(
+                    id = "1",
+                    text = resetMessages[0],
+                    timestamp = getCurrentTime(),
+                    type = MessageType.RECEIVED,
+                    sender = character.name
+                ))
+
+                // 진행 상태 업데이트 Job
+                var progressJob: Job? = null
+
+                // 진행 상태 업데이트 작업 시작
+                progressJob = launch {
+                    var index = 0
+                    while (isActive) {
+                        delay(6500) // 6.5초마다 메시지 변경
+                        if (index < resetMessages.size - 1) {
+                            index++
+                            // 메시지 업데이트
+                            val updatedMessage = messages.last().copy(text = resetMessages[index])
+                            messages[0] = updatedMessage  // 첫 번째 메시지 업데이트
+                        } else {
+                            // 마지막 메시지("오류 확인 중...") 도달 시 더 이상 변경하지 않음
+                            break
+                        }
+                    }
+                }
+
                 // 세션 초기화
                 GeminiChatService.clearCharacterChat(characterId)
                 chatHistoryManager.clearChatHistory(characterId)
@@ -122,8 +164,12 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 val apiKey = preferencesManager.getApiKey()
                 val initialResponse = GeminiChatService.performInitialExchange(apiKey, characterId)
 
+                // 진행 상태 업데이트 중지
+                progressJob?.cancel()
+
                 if (initialResponse == "ERROR") {
                     // 오류 발생 시 시스템 메시지 표시
+                    messages.clear()  // 진행 상태 메시지 제거
                     messages.add(Message(
                         id = "1",
                         text = "지맥 오류가 생겼습니다. 초기화를 다시 시도해주세요.",
@@ -133,6 +179,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     ))
                 } else {
                     // 캐릭터의 첫 인사말을 화면에 직접 표시
+                    messages.clear()  // 진행 상태 메시지 제거
                     messages.add(Message(
                         id = "1",
                         text = initialResponse,
@@ -151,6 +198,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
 
             } catch (e: Exception) {
                 Log.e("ChatScreen", "Error resetting chat: ${e.message}", e)
+                messages.clear()  // 진행 상태 메시지 제거
                 messages.add(Message(
                     id = "1",
                     text = "지맥 오류가 생겼습니다. 초기화를 다시 시도해주세요.",
@@ -176,13 +224,57 @@ fun ChatScreen(navController: NavController, characterId: String) {
         isInitializing = true
         placeholderText = "티바트에 연결 중입니다..."
 
+        // 진행 상태 메시지 목록
+        val initializingMessages = listOf(
+            "입력 중...",
+            "지맥 상태 분석 중...",
+            "지맥 네트워크에 침투 중...",
+            "지맥에서 데이터 추출 중...",
+            "추출한 데이터를 파악하는 중...",
+            "파악한 데이터를 출력하는 중...",
+            "오류 확인 중..."
+        )
+
+        // 초기화 상태 메시지를 추가 (추후 업데이트)
+        val initMessage = Message(
+            id = "1",
+            text = initializingMessages[0],
+            timestamp = getCurrentTime(),
+            type = MessageType.RECEIVED,
+            sender = character.name
+        )
+        messages.add(initMessage)
+
+        // 진행 상태 업데이트 Job
+        var progressJob: Job? = null
+
         try {
+            // 진행 상태 업데이트 작업 시작
+            progressJob = launch {
+                var index = 0
+                while (isActive) {
+                    delay(6500) // 6.5초마다 메시지 변경
+                    if (index < initializingMessages.size - 1) {
+                        index++
+                        // 메시지 업데이트
+                        val updatedMessage = messages.last().copy(text = initializingMessages[index])
+                        messages[0] = updatedMessage  // 첫 번째 메시지 업데이트
+                    } else {
+                        // 마지막 메시지("오류 확인 중...") 도달 시 더 이상 변경하지 않음
+                        break
+                    }
+                }
+            }
+
             // 저장된 채팅 내역 불러오기
             val savedMessages = chatHistoryManager.loadChatHistory(characterId)
 
             if (savedMessages.isNotEmpty()) {
                 // 저장된 메시지가 있으면 표시
+                progressJob?.cancel()  // 진행 상태 업데이트 중지
+                messages.clear()  // 진행 상태 메시지 제거
                 messages.addAll(savedMessages)
+
                 // 내부 채팅 기록에도 추가 (시스템 메시지 제외)
                 internalChatHistory = savedMessages.filter { it.sender != "티바트 시스템" }
 
@@ -194,10 +286,8 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 placeholderText = "메시지 입력"
 
                 // 스크롤 맨 아래로
-                coroutineScope.launch {
-                    delay(100) // UI 업데이트 대기
-                    scrollState.animateScrollToItem(messages.size - 1)
-                }
+                delay(100) // UI 업데이트 대기
+                scrollState.animateScrollToItem(messages.size - 1)
 
                 return@LaunchedEffect
             }
@@ -208,8 +298,12 @@ fun ChatScreen(navController: NavController, characterId: String) {
             // 초기 응답 가져오기 (CHARACTER_PROMPTS만 보내고 응답 받기)
             val initialResponse = GeminiChatService.performInitialExchange(apiKey, characterId)
 
+            // 진행 상태 업데이트 중지
+            progressJob?.cancel()
+
             if (initialResponse == "ERROR") {
                 // 오류 발생 시 시스템 메시지 표시
+                messages.clear()  // 진행 상태 메시지 제거
                 messages.add(Message(
                     id = "1",
                     text = "지맥 오류 발생! 우측 상단 메뉴의 초기화 기능을 사용해주세요.",
@@ -219,6 +313,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 ))
             } else {
                 // 캐릭터의 첫 인사말을 화면에 직접 표시
+                messages.clear()  // 진행 상태 메시지 제거
                 messages.add(Message(
                     id = "1",
                     text = initialResponse,
@@ -236,7 +331,11 @@ fun ChatScreen(navController: NavController, characterId: String) {
             placeholderText = "메시지 입력"
 
         } catch (e: Exception) {
+            // 진행 상태 업데이트 중지
+            progressJob?.cancel()
+
             // 예외 발생 시 시스템 메시지 표시
+            messages.clear()  // 진행 상태 메시지 제거
             messages.add(Message(
                 id = "1",
                 text = "지맥 오류 발생! 우측 상단 메뉴의 초기화 기능을 사용해주세요.",
@@ -288,108 +387,149 @@ fun ChatScreen(navController: NavController, characterId: String) {
         )
     }
 
-    // ===== 메시지 전송 함수 ===== (스트리밍 버전)
-    fun sendMessage() {
-        // 메시지가 비어있거나 이미 로딩 중이면 무시
-        if (newMessageText.isBlank() || isLoading || isInitializing) return
+// ===== 메시지 전송 함수 ===== (스트리밍 버전)
+// ===== 메시지 전송 함수 ===== (스트리밍 버전)
+fun sendMessage() {
+    // 메시지가 비어있거나 이미 로딩 중이면 무시
+    if (newMessageText.isBlank() || isLoading || isInitializing) return
 
-        // 사용자 메시지 추가
-        val userMessage = Message(
-            id = (messages.size + 1).toString(),
-            text = newMessageText,
-            timestamp = getCurrentTime(),
-            type = MessageType.SENT,
-            sender = "나"
-        )
-        messages.add(userMessage)
+    // 사용자 메시지 추가
+    val userMessage = Message(
+        id = (messages.size + 1).toString(),
+        text = newMessageText,
+        timestamp = getCurrentTime(),
+        type = MessageType.SENT,
+        sender = "나"
+    )
+    messages.add(userMessage)
 
-        val textToSend = newMessageText
-        newMessageText = ""
+    val textToSend = newMessageText
+    newMessageText = ""
 
-        // 로딩 상태 업데이트
-        isLoading = true
-        placeholderText = "상대의 답을 수신하고 있습니다..."
+    // 로딩 상태 업데이트
+    isLoading = true
+    placeholderText = "상대의 답을 수신하고 있습니다..."
 
-        // 키보드 제어 및 포커스 해제
-        keyboardController?.hide()
-        focusManager.clearFocus()
+    // 키보드 제어 및 포커스 해제
+    keyboardController?.hide()
+    focusManager.clearFocus()
 
-        // 스크롤 처리
-        coroutineScope.launch {
-            scrollState.animateScrollToItem(messages.size - 1)
+    // 스크롤 처리
+    coroutineScope.launch {
+        scrollState.animateScrollToItem(messages.size - 1)
+    }
+
+    // AI 응답 메시지를 미리 추가 (스트리밍 업데이트를 위한 빈 메시지)
+    val aiResponseMessage = Message(
+        id = (messages.size + 1).toString(),
+        text = "입력 중...",  // 초기 상태 메시지
+        timestamp = getCurrentTime(),
+        type = MessageType.RECEIVED,
+        sender = character.name
+    )
+    messages.add(aiResponseMessage)
+
+    // 진행 상태 메시지 목록
+    val processingMessages = listOf(
+        "입력 중...",
+        "지맥 상태 분석 중...",
+        "지맥 네트워크에 침투 중...",
+        "지맥에서 데이터 추출 중...",
+        "추출한 데이터를 파악하는 중...",
+        "파악한 데이터를 출력하는 중...",
+        "오류 확인 중..."
+    )
+
+    // 진행 상태 업데이트를 위한 Job
+    var progressJob: Job? = null
+
+    // API 요청 및 응답 처리 (스트리밍)
+    coroutineScope.launch {
+        val apiKey = preferencesManager.getApiKey()
+
+        // 진행 상태 업데이트 작업 시작
+        progressJob = launch {
+            var index = 0
+            while (isActive) {
+                delay(6500) // 6.5초마다 메시지 변경
+                if (index < processingMessages.size - 1) {
+                    index++
+                    // 메시지 리스트의 마지막 메시지 업데이트
+                    val updatedMessage = messages.last().copy(text = processingMessages[index])
+                    messages[messages.lastIndex] = updatedMessage
+
+                    // 스크롤 유지
+                    scrollState.animateScrollToItem(messages.size - 1)
+                } else {
+                    // 마지막 메시지("오류 확인 중...") 도달 시 더 이상 변경하지 않음
+                    break
+                }
+            }
         }
 
-        // AI 응답 메시지를 미리 추가 (스트리밍 업데이트를 위한 빈 메시지)
-        val aiResponseMessage = Message(
-            id = (messages.size + 1).toString(),
-            text = "",  // 처음에는 빈 텍스트
-            timestamp = getCurrentTime(),
-            type = MessageType.RECEIVED,
-            sender = character.name
-        )
-        messages.add(aiResponseMessage)
+        // 세션 복원이 필요한 경우 (저장된 메시지가 있고 첫 메시지를 보내는 경우)
+        if (needsSessionRestoration && savedMessagesLoaded) {
+            Log.d("ChatScreen", "First message after restore, restoring session...")
 
-        // API 요청 및 응답 처리 (스트리밍)
-        coroutineScope.launch {
-            val apiKey = preferencesManager.getApiKey()
+            // 이전 대화 내역을 모두 전송하여 컨텍스트 복원
+            val success = GeminiChatService.restoreSession(
+                apiKey = apiKey,
+                characterId = characterId,
+                savedMessages = internalChatHistory
+            )
 
-            // 세션 복원이 필요한 경우 (저장된 메시지가 있고 첫 메시지를 보내는 경우)
-            if (needsSessionRestoration && savedMessagesLoaded) {
-                Log.d("ChatScreen", "First message after restore, restoring session...")
+            if (!success) {
+                // 세션 복원 실패 시 사용자에게 알림
+                progressJob?.cancel() // 진행 상태 업데이트 중지
+                messages.removeAt(messages.lastIndex) // 미리 추가한 AI 메시지 제거
+                messages.add(Message(
+                    id = (messages.size + 1).toString(),
+                    text = "이전 대화 내역을 복원하는 중 문제가 발생했습니다.",
+                    timestamp = getCurrentTime(),
+                    type = MessageType.RECEIVED,
+                    sender = "티바트 시스템"
+                ))
+                isLoading = false
+                placeholderText = "메시지 입력"
+                return@launch
+            }
 
-                // 이전 대화 내역을 모두 전송하여 컨텍스트 복원
-                val success = GeminiChatService.restoreSession(
-                    apiKey = apiKey,
-                    characterId = characterId,
-                    savedMessages = internalChatHistory
-                )
+            // 세션 복원 완료, 더 이상 복원 필요 없음
+            needsSessionRestoration = false
+            savedMessagesLoaded = false
+        }
 
-                if (!success) {
-                    // 세션 복원 실패 시 사용자에게 알림
+        // 스트리밍 API 호출 및 실시간 업데이트
+        try {
+            // 스트리밍 응답 시작
+            var finalResponse = ""
+            var hasError = false
+
+            GeminiChatService.generateResponseStream(
+                apiKey = apiKey,
+                userMessage = textToSend,
+                chatHistory = internalChatHistory,
+                characterId = characterId
+            ).collect { streamResponse ->
+                if (streamResponse.error != null) {
+                    // 오류 메시지 처리
+                    progressJob?.cancel() // 진행 상태 업데이트 중지
+                    hasError = true
                     messages.removeAt(messages.lastIndex) // 미리 추가한 AI 메시지 제거
                     messages.add(Message(
                         id = (messages.size + 1).toString(),
-                        text = "이전 대화 내역을 복원하는 중 문제가 발생했습니다.",
+                        text = streamResponse.error,
                         timestamp = getCurrentTime(),
                         type = MessageType.RECEIVED,
                         sender = "티바트 시스템"
                     ))
-                    isLoading = false
-                    placeholderText = "메시지 입력"
-                    return@launch
-                }
+                } else {
+                    // 실시간으로 메시지 업데이트
+                    streamResponse.text?.let { text ->
+                        if (text.isNotBlank()) {
+                            // 진행 상태 업데이트 중지 (실제 응답이 오기 시작함)
+                            progressJob?.cancel()
 
-                // 세션 복원 완료, 더 이상 복원 필요 없음
-                needsSessionRestoration = false
-                savedMessagesLoaded = false
-            }
-
-            // 스트리밍 API 호출 및 실시간 업데이트
-            try {
-                // 스트리밍 응답 시작
-                var finalResponse = ""
-                var hasError = false
-
-                GeminiChatService.generateResponseStream(
-                    apiKey = apiKey,
-                    userMessage = textToSend,
-                    chatHistory = internalChatHistory,
-                    characterId = characterId
-                ).collect { streamResponse ->
-                    if (streamResponse.error != null) {
-                        // 오류 메시지 처리
-                        hasError = true
-                        messages.removeAt(messages.lastIndex) // 미리 추가한 AI 메시지 제거
-                        messages.add(Message(
-                            id = (messages.size + 1).toString(),
-                            text = streamResponse.error,
-                            timestamp = getCurrentTime(),
-                            type = MessageType.RECEIVED,
-                            sender = "티바트 시스템"
-                        ))
-                    } else {
-                        // 실시간으로 메시지 업데이트
-                        streamResponse.text?.let { text ->
                             // 메시지 리스트의 마지막 메시지 업데이트 (aiResponseMessage)
                             val updatedMessage = messages.last().copy(text = text)
                             messages[messages.lastIndex] = updatedMessage
@@ -401,49 +541,61 @@ fun ChatScreen(navController: NavController, characterId: String) {
                             }
                         }
                     }
-
-                    // 응답 완료 처리
-                    if (streamResponse.isComplete) {
-                        isLoading = false
-                        placeholderText = "메시지 입력"
-                    }
                 }
 
-                // 정상 응답인 경우에만 내부 채팅 기록 업데이트
-                if (!hasError) {
-                    val finalAiMessage = messages.last()
-
-                    // 내부 채팅 기록 업데이트 - 최신 교환 내용 추가
-                    internalChatHistory = internalChatHistory + listOf(
-                        userMessage,      // 방금 보낸 사용자 메시지
-                        finalAiMessage    // 최종 완성된 AI 응답
-                    )
-
-                    // 채팅 기록이 너무 길어지면 가장 오래된 메시지부터 제거
-                    if (internalChatHistory.size > 20) {
-                        internalChatHistory = internalChatHistory.drop(internalChatHistory.size - 20)
-                    }
+                // 응답 완료 처리
+                if (streamResponse.isComplete) {
+                    progressJob?.cancel() // 진행 상태 업데이트 중지
+                    isLoading = false
+                    placeholderText = "메시지 입력"
                 }
-
-            } catch (e: Exception) {
-                // 예외 발생 시 처리
-                Log.e("ChatScreen", "Error in streaming response: ${e.message}", e)
-                messages.removeAt(messages.lastIndex) // 미리 추가한 AI 메시지 제거
-                messages.add(Message(
-                    id = (messages.size + 1).toString(),
-                    text = "ERROR: 응답을 생성하는 동안 오류가 발생했습니다.",
-                    timestamp = getCurrentTime(),
-                    type = MessageType.RECEIVED,
-                    sender = "티바트 시스템"
-                ))
-                isLoading = false
-                placeholderText = "메시지 입력"
             }
 
-            // 채팅 내역 저장 (비동기적으로 수행)
-            chatHistoryManager.saveChatHistory(characterId, messages)
+            // 정상 응답인 경우에만 내부 채팅 기록 및 저장 작업 시작
+            if (!hasError) {
+                val finalAiMessage = messages.last()
+
+                // 백그라운드에서 처리할 작업들을 launch로 분리
+                coroutineScope.launch {
+                    try {
+                        // 내부 채팅 기록 업데이트 (백그라운드에서 처리)
+                        val newHistory = internalChatHistory + listOf(
+                            userMessage,      // 방금 보낸 사용자 메시지
+                            finalAiMessage    // 최종 완성된 AI 응답
+                        )
+
+                        // 길이 제한 (최대 20개 메시지만 유지)
+                        internalChatHistory = if (newHistory.size > 20) {
+                            newHistory.drop(newHistory.size - 20)
+                        } else {
+                            newHistory
+                        }
+
+                        // 채팅 내역 저장 (별도 백그라운드 작업으로 분리)
+                        chatHistoryManager.saveChatHistory(characterId, messages)
+                    } catch (e: Exception) {
+                        Log.e("ChatScreen", "Error in background processing: ${e.message}", e)
+                    }
+                }
+            }
+
+        } catch (e: Exception) {
+            // 예외 발생 시 처리
+            progressJob?.cancel() // 진행 상태 업데이트 중지
+            Log.e("ChatScreen", "Error in streaming response: ${e.message}", e)
+            messages.removeAt(messages.lastIndex) // 미리 추가한 AI 메시지 제거
+            messages.add(Message(
+                id = (messages.size + 1).toString(),
+                text = "ERROR: 응답을 생성하는 동안 오류가 발생했습니다.",
+                timestamp = getCurrentTime(),
+                type = MessageType.RECEIVED,
+                sender = "티바트 시스템"
+            ))
+            isLoading = false
+            placeholderText = "메시지 입력"
         }
     }
+}
 
     // ===== UI 구성 =====
     Column(modifier = Modifier.fillMaxSize()) {

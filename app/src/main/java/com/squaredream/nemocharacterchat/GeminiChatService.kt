@@ -34,6 +34,9 @@ class GeminiChatService {
         // 모델 캐싱 - API 키별로 GenerativeModel 인스턴스 재사용
         private var generativeModels = mutableMapOf<String, GenerativeModel>()
 
+        // 프롬프트 캐싱
+        private val cachedPrompts = mutableMapOf<String, String>()
+
         // 캐릭터별 프롬프트 템플릿
         private val CHARACTER_PROMPTS = mapOf(
             "raiden" to """
@@ -174,26 +177,27 @@ class GeminiChatService {
                 // 병렬 작업 수행
                 coroutineScope {
                     // 1. 기존 세션 정리 (비동기)
-                    val clearJob = async {
+                    launch {
                         clearCharacterChat(characterId)
                     }
 
-                    // 2. 모델 준비 (비동기)
-                    val modelJob = async {
-                        getOrCreateModel(apiKey)
+                    // 2 & 3. 모델과 프롬프트 준비 (병렬로 비동기 처리)
+                    val modelAndPromptJob = async {
+                        // 두 작업을 병렬로 실행
+                        val modelJob = async { getOrCreateModel(apiKey) }
+                        val promptJob = async {
+                            // 프롬프트 캐싱 활용
+                            cachedPrompts[characterId] ?: run {
+                                val prompt = CHARACTER_PROMPTS[characterId] ?: CHARACTER_PROMPTS["raiden"]!!
+                                cachedPrompts[characterId] = prompt
+                                prompt
+                            }
+                        }
+
+                        Pair(modelJob.await(), promptJob.await())
                     }
 
-                    // 3. 프롬프트 준비 (비동기)
-                    val promptJob = async {
-                        CHARACTER_PROMPTS[characterId] ?: CHARACTER_PROMPTS["raiden"]!!
-                    }
-
-                    // 작업 완료 대기
-                    clearJob.await()
-                    val generativeModel = modelJob.await()
-                    val characterPrompt = promptJob.await()
-
-                    // 프롬프트 직접 전송하여 첫 응답 받기
+                    val (generativeModel, characterPrompt) = modelAndPromptJob.await()
                     val response = generativeModel.generateContent(characterPrompt)
                     val initialMessage = response.text ?: "안녕하세요, 여행자."
 
@@ -205,34 +209,30 @@ class GeminiChatService {
                         initializedCharacters.add(sessionKey)
                     }
 
-                    val chatJob = async {
-                        val chat = generativeModel.startChat()
-
-                        // 페르소나 설정
+                    // 4. 채팅 세션 시작을 별도 스레드에서 준비 (진짜 응답은 이미 받음)
+                    launch {
                         try {
+                            val chat = generativeModel.startChat()
+
+                            // 페르소나 설정 (백그라운드로 이동)
                             chat.sendMessage(characterPrompt)
-                            Log.d(TAG, "Character persona set in chat session")
+
+                            // 채팅 정보 저장
+                            val characterChat = CharacterChatInfo(
+                                chat = chat,
+                                apiKey = apiKey,
+                                characterId = characterId,
+                                isInitialized = true,
+                                lastActivity = System.currentTimeMillis()
+                            )
+
+                            // 세션 캐시에 저장
+                            characterChats[sessionKey] = characterChat
+                            Log.d(TAG, "Chat session initialized in background")
                         } catch (e: Exception) {
-                            Log.e(TAG, "Failed to set character persona in chat session: ${e.message}")
+                            Log.e(TAG, "Background chat initialization failed: ${e.message}")
                         }
-
-                        chat
                     }
-
-                    // 채팅 준비 완료 대기
-                    val chat = chatJob.await()
-
-                    // 채팅 정보 저장
-                    val characterChat = CharacterChatInfo(
-                        chat = chat,
-                        apiKey = apiKey,
-                        characterId = characterId,
-                        isInitialized = true,
-                        lastActivity = System.currentTimeMillis()
-                    )
-
-                    // 세션 캐시에 저장
-                    characterChats[sessionKey] = characterChat
 
                     Log.d(TAG, "Initial message received: ${initialMessage.take(50)}...")
                     return@coroutineScope initialMessage
@@ -425,6 +425,7 @@ class GeminiChatService {
 
                     // 스트리밍 응답 수집
                     val responseBuilder = StringBuilder()
+                    var hasError = false
 
                     try {
                         characterChat.chat.sendMessageStream(userMessage).collect { chunk ->
@@ -457,6 +458,10 @@ class GeminiChatService {
                         launch {
                             Log.d(TAG, "Streaming response completed: ${responseBuilder.toString().take(50)}...")
                         }
+
+                        // 여기서 채팅 기록 업데이트는 ChatScreen.kt에서 처리해야 함
+                        // generateResponseStream은 단순히 응답만 반환하도록 수정
+
                     } catch (e: Exception) {
                         Log.e(TAG, "Error in streaming response: ${e.message}", e)
                         emit(StreamingChatResponse(
@@ -465,6 +470,8 @@ class GeminiChatService {
                             error = "티바트에서 정보를 생성하던 중 오류가 발생했습니다."
                         ))
                     }
+
+                    // 채팅 내역 저장도 ChatScreen.kt에서 처리해야 함
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error generating streaming response: ${e.message}", e)
@@ -475,7 +482,6 @@ class GeminiChatService {
                 ))
             }
         }
-
         /**
          * 사용하지 않는 세션을 정리합니다.
          * 일정 시간 동안 사용되지 않은 세션은 제거하여 메모리를 확보합니다.

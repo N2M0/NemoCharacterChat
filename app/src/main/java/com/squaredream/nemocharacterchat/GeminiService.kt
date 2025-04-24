@@ -21,21 +21,29 @@ class GeminiService {
          */
         suspend fun testApiKey(apiKey: String): Boolean = withContext(Dispatchers.IO) {
             try {
-                // 공식 Google AI SDK를 사용하여 모델 초기화
-                val generativeModel = GenerativeModel(
-                    modelName = "gemini-1.5-flash",
-                    apiKey = apiKey
-                )
-
-                // 간단한 토큰 카운팅으로 API 키 검증 (가벼운 API 호출)
-                val response = generativeModel.countTokens("Hello")
-
-                // 응답이 성공적으로 돌아왔으면 API 키가 유효함
-                Log.d(TAG, "API key validation successful. Token count: ${response.totalTokens}")
-                return@withContext true
+                // 가벼운 요청으로 API 키 검증
+                return@withContext testLightRequest(apiKey)
             } catch (e: Exception) {
                 // 예외 발생 시 API 키가 유효하지 않거나 네트워크 문제가 있는 것
                 Log.e(TAG, "API key validation failed: ${e.message}", e)
+                return@withContext false
+            }
+        }
+
+        /**
+         * 매우 가벼운 API 요청을 보내 API 키가 유효한지 빠르게 확인합니다.
+         */
+        private suspend fun testLightRequest(apiKey: String): Boolean = withContext(Dispatchers.IO) {
+            try {
+                // 가장 짧은 가능한 요청 (단일 문자)
+                val model = GenerativeModel(
+                    modelName = "gemini-1.5-flash",
+                    apiKey = apiKey
+                )
+                model.generateContent(".")
+                return@withContext true
+            } catch (e: Exception) {
+                Log.e(TAG, "Light API test failed: ${e.message}")
                 return@withContext false
             }
         }
