@@ -41,6 +41,8 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.util.Log
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.focus.onFocusChanged
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
@@ -608,6 +610,7 @@ fun sendMessage() {
 }
 
     // ===== UI 구성 =====
+    // 전체 화면 영역
     Column(modifier = Modifier.fillMaxSize()) {
         // 상단 앱바 (메뉴 추가)
         TopAppBar(
@@ -653,11 +656,19 @@ fun sendMessage() {
             elevation = 1.dp
         )
 
-        // 채팅 영역
+        // 채팅 영역 (클릭 시 키보드 숨김 처리)
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .weight(1f)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                    isTextFieldFocused = false
+                }
         ) {
             // 메시지 목록
             LazyColumn(
@@ -673,80 +684,79 @@ fun sendMessage() {
                     MessageItem(message = message)
                 }
             }
+        }
 
-            // 하단 입력 영역
-            Column(
+        // 하단 입력 영역 (별도 영역으로 분리)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White)
+        ) {
+            Divider(color = Color.Transparent)
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .background(Color.White)
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .imePadding(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Divider(color = Color.Transparent)
-                Row(
+                TextField(
+                    value = newMessageText,
+                    onValueChange = { newMessageText = it },
+                    placeholder = { Text(placeholderText) },
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 8.dp)
-                        .imePadding(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextField(
-                        value = newMessageText,
-                        onValueChange = { newMessageText = it },
-                        placeholder = { Text(placeholderText) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 8.dp)
-                            .onFocusChanged { state ->
-                                // 포커스 상태가 변경될 때마다 업데이트
-                                isTextFieldFocused = state.isFocused
-                                // 포커스가 사라지면 변수를 false로 명시적으로 초기화
-                                if (!state.isFocused) {
-                                    isTextFieldFocused = false
-                                }
-                            },
-                        colors = TextFieldDefaults.textFieldColors(
-                            backgroundColor = Color.LightGray.copy(alpha = 0.2f),
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            cursorColor = MaterialTheme.colors.primary
-                        ),
-                        shape = RoundedCornerShape(24.dp),
-                        singleLine = true,
-                        enabled = true
-                    )
-
-                    // 전송 버튼/로딩 인디케이터
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .background(
-                                color = if (newMessageText.isNotBlank() && !isLoading && !isInitializing)
-                                    MaterialTheme.colors.primary
-                                else Color.Gray,
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isLoading || isInitializing) {
-                            // 로딩 중 인디케이터
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            // 전송 버튼
-                            IconButton(
-                                onClick = { sendMessage() },
-                                enabled = newMessageText.isNotBlank(),
-                                modifier = Modifier.matchParentSize()
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Send,
-                                    contentDescription = "전송",
-                                    tint = Color.White
-                                )
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                        .onFocusChanged { state ->
+                            // 포커스 상태가 변경될 때마다 업데이트
+                            isTextFieldFocused = state.isFocused
+                            // 포커스가 사라지면 변수를 false로 명시적으로 초기화
+                            if (!state.isFocused) {
+                                isTextFieldFocused = false
                             }
+                        },
+                    colors = TextFieldDefaults.textFieldColors(
+                        backgroundColor = Color.LightGray.copy(alpha = 0.2f),
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = MaterialTheme.colors.primary
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    singleLine = true,
+                    enabled = true
+                )
+
+                // 전송 버튼/로딩 인디케이터
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = if (newMessageText.isNotBlank() && !isLoading && !isInitializing)
+                                MaterialTheme.colors.primary
+                            else Color.Gray,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isLoading || isInitializing) {
+                        // 로딩 중 인디케이터
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        // 전송 버튼
+                        IconButton(
+                            onClick = { sendMessage() },
+                            enabled = newMessageText.isNotBlank(),
+                            modifier = Modifier.matchParentSize()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Send,
+                                contentDescription = "전송",
+                                tint = Color.White
+                            )
                         }
                     }
                 }
