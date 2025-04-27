@@ -260,29 +260,37 @@ class GeminiChatService {
             // 세션 키 (캐릭터ID:API키)
             val chatKey = "$characterId:$apiKey"
 
-            // 초기화 중인지 확인
-            if (sessionInitializationInProgress[chatKey] == true) {
-                // 초기화가 진행 중이면 완료될 때까지 대기
-                var count = 0
-                while (sessionInitializationInProgress[chatKey] == true && count < 10) {
-                    delay(100) // 300ms 대기
-                    count++
-                }
-            }
-
             // 강제 재초기화인 경우 기존 세션 제거
             if (forceReinitialize) {
                 characterChats.remove(chatKey)
                 initializedCharacters.remove(chatKey)
+            } else {
+                // 기존 세션이 있고 재초기화가 아니면 재사용
+                characterChats[chatKey]?.let { existingChat ->
+                    if (existingChat.apiKey == apiKey && existingChat.isInitialized) {
+                        // 마지막 활동 시간 업데이트
+                        val updatedChat = existingChat.copy(lastActivity = System.currentTimeMillis())
+                        characterChats[chatKey] = updatedChat
+                        Log.d(TAG, "Reusing existing chat for character: $characterId")
+                        return@withContext updatedChat
+                    }
+                }
             }
 
-            // 기존 세션이 있고 재초기화가 아니면 재사용
-            characterChats[chatKey]?.let { existingChat ->
-                if (existingChat.apiKey == apiKey && existingChat.isInitialized && !forceReinitialize) {
-                    // 마지막 활동 시간 업데이트
-                    characterChats[chatKey] = existingChat.copy(lastActivity = System.currentTimeMillis())
-                    Log.d(TAG, "Reusing existing chat for character: $characterId")
-                    return@withContext existingChat
+            // 세션 초기화 상태 확인 - 잠금 기반 접근법으로 변경
+            val isInitializing = sessionInitializationInProgress.getOrPut(chatKey) { false }
+            if (isInitializing) {
+                // 다른 스레드에서 초기화 중이면 완료될 때까지 대기
+                // 타임아웃 추가 (500ms 간격으로 최대 5초 대기)
+                for (i in 0 until 10) {
+                    delay(500)
+                    // 매번 체크할 때마다 초기화된 세션을 찾음
+                    characterChats[chatKey]?.let {
+                        if (it.isInitialized) {
+                            sessionInitializationInProgress.remove(chatKey)
+                            return@withContext it
+                        }
+                    }
                 }
             }
 
@@ -299,20 +307,14 @@ class GeminiChatService {
                 // 캐릭터 프롬프트 가져오기
                 val characterPrompt = CHARACTER_PROMPTS[characterId] ?: CHARACTER_PROMPTS["raiden"]!!
 
-                // 새 채팅 세션 시작
-                val chat = generativeModel.startChat()
+                // 새 채팅 세션 시작 - 효율성을 위해 history 기반 초기화
+                val initialHistory = mutableListOf<Content>()
+                initialHistory.add(content {
+                    role = "user"
+                    text(characterPrompt)
+                })
 
-                // 항상 페르소나 설정 프롬프트 전송 (이전 초기화 상태 무시)
-                try {
-                    Log.d(TAG, "Sending character persona prompt")
-                    val response = chat.sendMessage(characterPrompt)
-                    Log.d(TAG, "Character persona set successfully: ${response.text}")
-                    initializedCharacters.add(chatKey)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error setting character persona: ${e.message}")
-                    sessionInitializationInProgress[chatKey] = false
-                    throw e  // 초기화 실패 시 예외 전파
-                }
+                val chat = Chat(generativeModel, initialHistory)
 
                 // 새 채팅 정보 생성 및 캐시에 저장
                 val characterChat = CharacterChatInfo(
@@ -324,27 +326,14 @@ class GeminiChatService {
                 )
 
                 characterChats[chatKey] = characterChat
-                sessionInitializationInProgress[chatKey] = false
+                initializedCharacters.add(chatKey)
+                sessionInitializationInProgress.remove(chatKey)
                 return@withContext characterChat
             } catch (e: Exception) {
                 // 오류 발생 시 초기화 상태 정리
-                sessionInitializationInProgress[chatKey] = false
+                sessionInitializationInProgress.remove(chatKey)
                 throw e
             }
-        }
-
-        /**
-         * 캐릭터 세션이 이미 존재하는지 확인합니다.
-         *
-         * @param apiKey API 키
-         * @param characterId 캐릭터 ID
-         * @return 세션이 존재하면 true, 아니면 false
-         */
-        suspend fun checkSessionExists(apiKey: String, characterId: String): Boolean = withContext(Dispatchers.IO) {
-            val chatKey = "$characterId:$apiKey"
-            val exists = characterChats.containsKey(chatKey) && characterChats[chatKey]?.isInitialized == true
-            Log.d(TAG, "Session exists for $characterId: $exists")
-            return@withContext exists
         }
 
         /**
