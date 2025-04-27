@@ -519,7 +519,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                         // 스크롤 유지
                         scrollState.animateScrollToItem(messages.size - 1)
                     } else {
-                        // 마지막 메시지("오류 확인 중...") 도달 시 더 이상 변경하지 않음
+                        // 마지막 메시지 도달 시 더 이상 변경하지 않음
                         break
                     }
                 }
@@ -624,12 +624,14 @@ fun ChatScreen(navController: NavController, characterId: String) {
                                 finalAiMessage    // 최종 완성된 AI 응답
                             )
 
+                            /*
+                            // 길이제한 코드 지금 당장은 안쓸거임
                             // 길이 제한 (최대 20개 메시지만 유지)
                             internalChatHistory = if (newHistory.size > 20) {
                                 newHistory.drop(newHistory.size - 20)
                             } else {
                                 newHistory
-                            }
+                            }*/
 
                             // 채팅 내역 저장 (별도 백그라운드 작업으로 분리) - 로딩 메시지 필터링은 DisposableEffect에서 처리
                             chatHistoryManager.saveChatHistory(characterId, messages)

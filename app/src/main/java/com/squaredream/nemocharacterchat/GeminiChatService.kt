@@ -16,7 +16,6 @@ import kotlinx.coroutines.withContext
 
 /**
  * Gemini API를 사용하여 채팅 기능을 제공하는 서비스 클래스
- * 최적화된 버전 - 중복 API 호출 제거, 이전 대화 내역 복원 기능 추가
  */
 class GeminiChatService {
 
@@ -409,7 +408,7 @@ class GeminiChatService {
                     // 2. 복원할 메시지 필터링 작업 (비동기)
                     val messagesJob = async {
                         savedMessages.filter {
-                            it.type == MessageType.SENT && it.id != "1"
+                            it.id != "1"
                         }
                     }
 

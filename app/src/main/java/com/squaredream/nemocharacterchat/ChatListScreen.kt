@@ -55,20 +55,11 @@ fun ChatListScreen(navController: NavController) {
 
                         // 모든 캐릭터의 세션을 백그라운드에서 미리 생성
                         withContext(Dispatchers.IO) {
-                            // 라이덴 세션 초기화
                             try {
-                                MainApplication.sessionManager.getOrCreateCharacterSession("raiden")
-                                Log.d("ChatListScreen", "Raiden session preloaded")
+                                MainApplication.sessionManager.getOrCreateSharedSession(apiKey, forceCreate = false)
+                                Log.d("ChatListScreen", "Session preloaded")
                             } catch (e: Exception) {
-                                Log.e("ChatListScreen", "Failed to preload Raiden session: ${e.message}")
-                            }
-
-                            // 푸리나 세션 초기화
-                            try {
-                                MainApplication.sessionManager.getOrCreateCharacterSession("furina")
-                                Log.d("ChatListScreen", "Furina session preloaded")
-                            } catch (e: Exception) {
-                                Log.e("ChatListScreen", "Failed to preload Furina session: ${e.message}")
+                                Log.e("ChatListScreen", "Failed to preload session: ${e.message}")
                             }
                         }
                     } catch (e: Exception) {
@@ -88,7 +79,7 @@ fun ChatListScreen(navController: NavController) {
             )
         }
     ) { paddingValues ->
-        // 채팅방 목록 데이터 (추후 실제 데이터로 교체 가능)
+        // 채팅방 목록 데이터
         val chatRooms = listOf(
             ChatRoom(
                 id = "raiden",

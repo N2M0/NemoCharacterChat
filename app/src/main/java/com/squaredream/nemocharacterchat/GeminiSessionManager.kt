@@ -39,49 +39,61 @@ class GeminiSessionManager(
         }
 
         // 오류 응답 생성 유틸리티 함수
-        fun errorResponseFlow(errorMessage: String): Flow<GeminiChatService.StreamingChatResponse> = flow {
-            emit(GeminiChatService.StreamingChatResponse(
-                isComplete = true,
-                text = null,
-                error = errorMessage
-            ))
-        }
-
-        // 스트림 변환 함수
-        fun transformResponseStream(stream: Flow<com.google.ai.client.generativeai.type.GenerateContentResponse>): Flow<GeminiChatService.StreamingChatResponse> = flow {
-            // 초기 진행 상태 전송
-            emit(GeminiChatService.StreamingChatResponse(
-                isComplete = false,
-                text = "",
-                error = null
-            ))
-
-            val responseBuilder = StringBuilder()
-
-            // 스트리밍 응답 수집
-            stream.collect { response ->
-                response.text?.let { text ->
-                    responseBuilder.append(text)
-                    // 누적된 응답 전송
-                    emit(GeminiChatService.StreamingChatResponse(
-                        isComplete = false,
-                        text = responseBuilder.toString(),
-                        error = null
-                    ))
-                }
+        fun errorResponseFlow(errorMessage: String): Flow<GeminiChatService.StreamingChatResponse> =
+            flow {
+                emit(
+                    GeminiChatService.StreamingChatResponse(
+                        isComplete = true,
+                        text = null,
+                        error = errorMessage
+                    )
+                )
             }
 
-            // 응답 완료 신호
-            emit(GeminiChatService.StreamingChatResponse(
-                isComplete = true,
-                text = responseBuilder.toString(),
-                error = null
-            ))
-        }
+        // 스트림 변환 함수
+        fun transformResponseStream(stream: Flow<com.google.ai.client.generativeai.type.GenerateContentResponse>): Flow<GeminiChatService.StreamingChatResponse> =
+            flow {
+                // 초기 진행 상태 전송
+                emit(
+                    GeminiChatService.StreamingChatResponse(
+                        isComplete = false,
+                        text = "",
+                        error = null
+                    )
+                )
+
+                val responseBuilder = StringBuilder()
+
+                // 스트리밍 응답 수집
+                stream.collect { response ->
+                    response.text?.let { text ->
+                        responseBuilder.append(text)
+                        // 누적된 응답 전송
+                        emit(
+                            GeminiChatService.StreamingChatResponse(
+                                isComplete = false,
+                                text = responseBuilder.toString(),
+                                error = null
+                            )
+                        )
+                    }
+                }
+
+                // 응답 완료 신호
+                emit(
+                    GeminiChatService.StreamingChatResponse(
+                        isComplete = true,
+                        text = responseBuilder.toString(),
+                        error = null
+                    )
+                )
+            }
     }
 
     // 세션 캐시 - 앱이 실행되는 동안 유지됨
-    private val characterSessions = mutableMapOf<String, CharacterSession>()
+    private var sharedSession: Chat? = null
+    private var sessionApiKey: String = ""
+    private var isSessionInitialized: Boolean = false
 
     // API 키
     private var apiKey: String = ""
@@ -178,45 +190,23 @@ class GeminiSessionManager(
 
         // 앱 시작 시 모든 캐릭터 세션을 백그라운드에서 준비
         viewModelScope.launch(Dispatchers.IO) {
-            preloadAllCharacterSessions()
+            getOrCreateSharedSession(apiKey, forceCreate = false)
         }
     }
 
     /**
-     * 모든 캐릭터 세션을 미리 로드합니다.
-     */
-    private suspend fun preloadAllCharacterSessions() {
-        withContext(Dispatchers.IO) {
-            characterPrompts.keys.forEach { characterId ->
-                async {
-                    try {
-                        getOrCreateCharacterSession(characterId, forceCreate = false)
-                        Log.d(TAG, "Preloaded session for character: $characterId")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to preload session for $characterId: ${e.message}")
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * 캐릭터 세션을 가져오거나 생성합니다.
-     * @param characterId 캐릭터 ID
+     * 공유 세션을 가져오거나 생성합니다.
+     * @param apiKey API 키
      * @param forceCreate 강제로 새 세션을 생성할지 여부
      */
-    suspend fun getOrCreateCharacterSession(
-        characterId: String,
+    suspend fun getOrCreateSharedSession(
+        apiKey: String,
         forceCreate: Boolean = false
-    ): CharacterSession = withContext(Dispatchers.IO) {
-        val sessionKey = characterId
-
-        // 기존 세션이 있고 강제 생성이 아니면 기존 세션 반환
-        if (!forceCreate && characterSessions.containsKey(sessionKey)) {
-            val session = characterSessions[sessionKey]!!
-            // 마지막 사용 시간 업데이트
-            characterSessions[sessionKey] = session.copy(lastUsed = System.currentTimeMillis())
-            return@withContext session
+    ): Chat = withContext(Dispatchers.IO) {
+        // 기존 세션이 있고 API 키가 같고 강제 생성이 아니면 기존 세션 반환
+        if (!forceCreate && sharedSession != null && sessionApiKey == apiKey && isSessionInitialized) {
+            Log.d(TAG, "Reusing existing shared session")
+            return@withContext sharedSession!!
         }
 
         // 새 세션 생성
@@ -228,24 +218,15 @@ class GeminiSessionManager(
 
             val chat = generativeModel.startChat()
 
-            // 캐릭터 프롬프트 설정
-            val prompt = characterPrompts[characterId] ?: characterPrompts["raiden"]!!
-            val initialResponse = chat.sendMessage(prompt)
-            Log.d(TAG, "Initial response from character $characterId: ${initialResponse.text?.take(30)}")
+            // 세션 정보 업데이트
+            sharedSession = chat
+            sessionApiKey = apiKey
+            isSessionInitialized = true
 
-            // 세션 정보 저장
-            val session = CharacterSession(
-                chat = chat,
-                isInitialized = true,
-                characterId = characterId
-            )
-
-            characterSessions[sessionKey] = session
-            Log.d(TAG, "Created new session for character: $characterId")
-
-            return@withContext session
+            Log.d(TAG, "Created new shared session")
+            return@withContext chat
         } catch (e: Exception) {
-            Log.e(TAG, "Error creating session for $characterId: ${e.message}")
+            Log.e(TAG, "Error creating shared session: ${e.message}")
             throw e
         }
     }
@@ -260,8 +241,12 @@ class GeminiSessionManager(
         try {
             Log.d(TAG, "Restoring session for character: $characterId")
 
-            // 세션 가져오기 또는 생성
-            val session = getOrCreateCharacterSession(characterId, forceCreate = true)
+            // 공유 세션 가져오기 - 이미 초기화되어 있다면 재사용
+            val chat = getOrCreateSharedSession(apiKey, forceCreate = false)
+
+            // 캐릭터 프롬프트 전송 (캐릭터 컨텍스트 설정)
+            val characterPrompt = characterPrompts[characterId] ?: characterPrompts["raiden"]!!
+            chat.sendMessage(characterPrompt)
 
             // 사용자 메시지만 복원
             val userMessages = savedMessages.filter { it.type == MessageType.SENT }
@@ -274,7 +259,7 @@ class GeminiSessionManager(
             // 메시지 복원
             for (message in userMessages) {
                 try {
-                    session.chat.sendMessage(message.text)
+                    chat.sendMessage(message.text)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring message: ${e.message}")
                     // 개별 메시지 오류는 무시하고 계속 진행
@@ -300,10 +285,16 @@ class GeminiSessionManager(
             Log.d(TAG, "Generating response for character: $characterId")
 
             // 세션 가져오거나 생성
-            val session = getOrCreateCharacterSession(characterId)
+            val session = getOrCreateSharedSession(apiKey)
 
-            // 응답 생성
-            val response = session.chat.sendMessage(userMessage)
+            // 캐릭터 프롬프트 가져오기
+            val characterPrompt = characterPrompts[characterId] ?: characterPrompts["raiden"]!!
+
+            // 캐릭터 컨텍스트 설정 (첫 메시지로 캐릭터 프롬프트 전송)
+            session.sendMessage(characterPrompt)
+
+            // 사용자 메시지 전송 및 응답 생성
+            val response = session.sendMessage(userMessage)
 
             return@withContext response.text ?: "응답을 생성할 수 없습니다."
         } catch (e: Exception) {
@@ -324,46 +315,60 @@ class GeminiSessionManager(
             Log.d(TAG, "Generating streaming response for character: $characterId")
 
             // 초기 진행 상태 전송
-            emit(GeminiChatService.StreamingChatResponse(
-                isComplete = false,
-                text = "",
-                error = null
-            ))
+            emit(
+                GeminiChatService.StreamingChatResponse(
+                    isComplete = false,
+                    text = "",
+                    error = null
+                )
+            )
 
             // 세션 가져오거나 생성
-            val session = getOrCreateCharacterSession(characterId)
+            val session = getOrCreateSharedSession(apiKey)
 
-            // 스트리밍 응답을 위한 StringBuilder
+            // 캐릭터 프롬프트 가져오기
+            val characterPrompt = characterPrompts[characterId] ?: characterPrompts["raiden"]!!
+
+            // 캐릭터 컨텍스트 설정 (첫 메시지로 캐릭터 프롬프트 전송)
+            session.sendMessage(characterPrompt)
+
+            // 스트리밍 응답 수집
             val responseBuilder = StringBuilder()
 
             // 스트리밍 응답 수집
-            session.chat.sendMessageStream(userMessage).collect { chunk ->
+            session.sendMessageStream(userMessage).collect { chunk ->
                 chunk.text?.let { text ->
                     responseBuilder.append(text)
                     // 누적된 응답 전송
-                    emit(GeminiChatService.StreamingChatResponse(
-                        isComplete = false,
-                        text = responseBuilder.toString(),
-                        error = null
-                    ))
+                    emit(
+                        GeminiChatService.StreamingChatResponse(
+                            isComplete = false,
+                            text = responseBuilder.toString(),
+                            error = null
+                        )
+                    )
                 }
             }
 
             // 응답 완료 신호
-            emit(GeminiChatService.StreamingChatResponse(
-                isComplete = true,
-                text = responseBuilder.toString(),
-                error = null
-            ))
+            emit(
+                GeminiChatService.StreamingChatResponse(
+                    isComplete = true,
+                    text = responseBuilder.toString(),
+                    error = null
+                )
+            )
 
             Log.d(TAG, "Streaming response completed for $characterId")
         } catch (e: Exception) {
             Log.e(TAG, "Error generating streaming response: ${e.message}")
-            emit(GeminiChatService.StreamingChatResponse(
-                isComplete = true,
-                text = null,
-                error = "티바트에서 정보를 생성하던 중 오류가 발생했습니다."
-            ))
+            emit(
+                GeminiChatService.StreamingChatResponse(
+                    isComplete = true,
+                    text = null,
+                    error = "티바트에서 정보를 생성하던 중 오류가 발생했습니다."
+                )
+            )
         }
     }
 
@@ -371,12 +376,17 @@ class GeminiSessionManager(
      * 특정 캐릭터의 세션을 초기화합니다.
      */
     suspend fun resetCharacterSession(characterId: String) = withContext(Dispatchers.IO) {
+        // 공유 세션이므로 모든 캐릭터가 영향을 받음
+        // 단, 주의 메시지 출력
+        Log.d(TAG, "Resetting shared session (requested by character: $characterId)")
+
         try {
-            characterSessions.remove(characterId)
-            Log.d(TAG, "Reset session for character: $characterId")
+            // 세션 초기화
+            sharedSession = null
+            isSessionInitialized = false
 
             // 새 세션 생성
-            getOrCreateCharacterSession(characterId, forceCreate = true)
+            getOrCreateSharedSession(apiKey, forceCreate = true)
         } catch (e: Exception) {
             Log.e(TAG, "Error resetting session: ${e.message}")
             throw e
@@ -384,17 +394,26 @@ class GeminiSessionManager(
     }
 
     /**
-     * API 키가 변경되면 모든 세션을 초기화합니다.
+     * API 키가 변경되면 세션을 초기화합니다.
      */
     fun updateApiKey(newApiKey: String) {
         if (this.apiKey != newApiKey) {
             this.apiKey = newApiKey
-            characterSessions.clear()
-            Log.d(TAG, "API key updated and all sessions cleared")
+
+            // 세션 초기화
+            sharedSession = null
+            isSessionInitialized = false
+            sessionApiKey = newApiKey
+
+            Log.d(TAG, "API key updated and session cleared")
 
             // 새 API 키로 세션 미리 로드
             viewModelScope.launch(Dispatchers.IO) {
-                preloadAllCharacterSessions()
+                try {
+                    getOrCreateSharedSession(newApiKey)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to preload session with new API key: ${e.message}")
+                }
             }
         }
     }
@@ -404,20 +423,21 @@ class GeminiSessionManager(
      */
     override fun onCleared() {
         super.onCleared()
-        characterSessions.clear()
+        sharedSession = null
+        isSessionInitialized = false
         Log.d(TAG, "GeminiSessionManager cleared")
     }
-}
 
-/**
- * GeminiSessionManager를 위한 Factory 클래스
- */
-class GeminiSessionManagerFactory(private val context: Context) : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(GeminiSessionManager::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return GeminiSessionManager(context) as T
+    /**
+     * GeminiSessionManager를 위한 Factory 클래스
+     */
+    class GeminiSessionManagerFactory(private val context: Context) : ViewModelProvider.Factory {
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            if (modelClass.isAssignableFrom(GeminiSessionManager::class.java)) {
+                @Suppress("UNCHECKED_CAST")
+                return GeminiSessionManager(context) as T
+            }
+            throw IllegalArgumentException("Unknown ViewModel class")
         }
-        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
