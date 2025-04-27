@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.Button
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -31,13 +32,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
+import com.squaredream.nemocharacterchat.MainApplication
 import com.squaredream.nemocharacterchat.data.GeminiService
 import com.squaredream.nemocharacterchat.data.PreferencesManager
 import com.squaredream.nemocharacterchat.ui.theme.NemoCharacterChatTheme
@@ -45,6 +52,8 @@ import com.squaredream.nemocharacterchat.ui.theme.NemoCharacterChatTheme
 @Composable
 fun ApiKeyScreen(navController: NavController) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+
     val preferencesManager = remember { PreferencesManager(context) }
     val coroutineScope = rememberCoroutineScope()
 
@@ -76,13 +85,34 @@ fun ApiKeyScreen(navController: NavController) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = "직접 발급받은 Google Gemini API 키가 필요합니다.\n\nAPI 키는 aistudio.google.com/app/apikey 에서 \n무료로 발급받을 수 있습니다.",
-                style = MaterialTheme.typography.caption,
+            val annotatedText = buildAnnotatedString {
+                append("직접 발급받은 Google Gemini API 키가 필요합니다.\n\nAPI 키는 ")
+                // 링크 부분 스타일 지정 및 클릭 가능하게 설정
+                pushStringAnnotation(tag = "URL", annotation = "https://aistudio.google.com/app/apikey")
+                withStyle(
+                    style = SpanStyle(
+                        color = MaterialTheme.colors.primary, // 링크 색상
+                        textDecoration = TextDecoration.Underline // 밑줄 추가
+                    )
+                ) {
+                    append("aistudio.google.com/app/apikey")
+                }
+                pop()
+                append(" 에서 \n무료로 발급받을 수 있습니다.")
+            }
+
+            ClickableText(
+                text = annotatedText,
+                style = MaterialTheme.typography.caption.copy(textAlign = TextAlign.Center), // 기존 스타일 적용 및 가운데 정렬
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp),
-                textAlign = TextAlign.Center
+                onClick = { offset ->
+                    annotatedText.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                        .firstOrNull()?.let { annotation ->
+                            uriHandler.openUri(annotation.item) // 링크 열기
+                        }
+                }
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -157,6 +187,10 @@ private fun saveApiKey(
 ) {
     preferencesManager.saveApiKey(apiKey)
     preferencesManager.setKeyStatus(true)
+
+    // SessionManager에도 API 키 업데이트
+    MainApplication.sessionManager.updateApiKey(apiKey)
+
     Toast.makeText(context, "API 키가 저장되었습니다", Toast.LENGTH_SHORT).show()
 }
 

@@ -10,14 +10,21 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
  * Gemini API를 사용하여 채팅 기능을 제공하는 서비스 클래스
- * 최적화된 버전 - 중복 API 호출 제거, 이전 대화 내역 복원 기능 추가
  */
 class GeminiChatService {
+
+    data class StreamingChatResponse(
+        val isComplete: Boolean,  // 응답이 완료되었는지 여부
+        val text: String?,        // 현재까지 받은 응답 텍스트
+        val error: String?        // 오류 메시지 (있는 경우)
+    )
+
     companion object {
         private const val TAG = "GeminiChatService"
         private const val MODEL_NAME = "gemini-2.5-flash-preview-04-17"
@@ -38,7 +45,7 @@ class GeminiChatService {
         private val cachedPrompts = mutableMapOf<String, String>()
 
         // 캐릭터별 프롬프트 템플릿
-        private val CHARACTER_PROMPTS = mapOf(
+        public val CHARACTER_PROMPTS = mapOf(
             "raiden" to """
             별도의 웹 검색 없이 작업하세요.
             우선 당신이 알고 있는 원신 게임 세계관을 한국어 공식 표기를 기준으로 떠올리세요.
@@ -119,12 +126,6 @@ class GeminiChatService {
             val characterId: String,     // 캐릭터 ID
             val isInitialized: Boolean,   // 초기화 여부
             val lastActivity: Long
-        )
-
-        data class StreamingChatResponse(
-            val isComplete: Boolean,  // 응답이 완료되었는지 여부
-            val text: String?,        // 현재까지 받은 응답 텍스트
-            val error: String?        // 오류 메시지 (있는 경우)
         )
 
         /**
@@ -329,28 +330,85 @@ class GeminiChatService {
         }
 
         /**
+         * 캐릭터 세션이 이미 존재하는지 확인합니다.
+         *
+         * @param apiKey API 키
+         * @param characterId 캐릭터 ID
+         * @return 세션이 존재하면 true, 아니면 false
+         */
+        suspend fun checkSessionExists(apiKey: String, characterId: String): Boolean = withContext(Dispatchers.IO) {
+            val chatKey = "$characterId:$apiKey"
+            val exists = characterChats.containsKey(chatKey) && characterChats[chatKey]?.isInitialized == true
+            Log.d(TAG, "Session exists for $characterId: $exists")
+            return@withContext exists
+        }
+
+        /**
+         * 환영 메시지를 가져옵니다.
+         * 세션 상태와 관계없이 캐릭터의 첫 인사말을 반환합니다.
+         * 기존 세션이 있어도 항상 새로운 응답을 생성합니다.
+         *
+         * @param apiKey API 키
+         * @param characterId 캐릭터 ID
+         * @return 캐릭터의 환영 메시지 또는 ERROR 문자열
+         */
+        suspend fun getWelcomeMessage(apiKey: String, characterId: String): String = withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Getting welcome message for character: $characterId")
+
+                // 캐싱된 모델 사용
+                val generativeModel = getOrCreateModel(apiKey)
+
+                // 캐릭터 프롬프트 가져오기
+                val characterPrompt = CHARACTER_PROMPTS[characterId] ?: CHARACTER_PROMPTS["raiden"]!!
+
+                // 세션과 별개로 첫 인사말만 가져오기 (세션 초기화 없이 응답만 받음)
+                val response = generativeModel.generateContent(characterPrompt)
+                val welcomeMessage = response.text
+
+                if (welcomeMessage.isNullOrBlank()) {
+                    Log.e(TAG, "Generated welcome message is null or blank")
+                    return@withContext "ERROR"
+                }
+
+                Log.d(TAG, "Welcome message generated: ${welcomeMessage.take(30)}...")
+                return@withContext welcomeMessage
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting welcome message: ${e.message}", e)
+                return@withContext "ERROR"
+            }
+        }
+
+        /**
          * 세션을 복원하고 이전 대화 내역을 전송합니다.
-         * 비동기 처리 최적화 버전
+         * forceReinitialize 매개변수로 세션 재초기화 여부를 제어합니다.
+         *
+         * @param apiKey API 키
+         * @param characterId 캐릭터 ID
+         * @param savedMessages 저장된 메시지 목록
+         * @param forceReinitialize 세션을 강제로 재초기화할지 여부 (기본값: false)
          */
         suspend fun restoreSession(
             apiKey: String,
             characterId: String,
-            savedMessages: List<Message>
+            savedMessages: List<Message>,
+            forceReinitialize: Boolean = false
         ): Boolean = withContext(Dispatchers.IO) {
             try {
                 Log.d(TAG, "Restoring session for character: $characterId with ${savedMessages.size} messages")
+                Log.d(TAG, "Force reinitialization: $forceReinitialize")
 
                 // 효율적인 처리를 위한 준비 작업을 병렬로 수행
                 coroutineScope {
-                    // 1. 세션 초기화 작업 시작 (비동기)
+                    // 1. 세션 초기화 작업 시작 (비동기) - forceReinitialize 매개변수 전달
                     val initJob = async {
-                        initializeCharacterChat(apiKey, characterId, forceReinitialize = true)
+                        initializeCharacterChat(apiKey, characterId, forceReinitialize = forceReinitialize)
                     }
 
                     // 2. 복원할 메시지 필터링 작업 (비동기)
                     val messagesJob = async {
                         savedMessages.filter {
-                            it.type == MessageType.SENT && it.id != "1"
+                            it.id != "1"
                         }
                     }
 
@@ -532,6 +590,25 @@ class GeminiChatService {
         fun clearModelCache() {
             generativeModels.clear()
             Log.d(TAG, "Model cache cleared")
+        }
+
+        fun transformResponseStream(stream: Flow<com.google.ai.client.generativeai.type.GenerateContentResponse>): Flow<StreamingChatResponse> {
+            return stream.map { response ->
+                StreamingChatResponse(
+                    isComplete = false,
+                    text = response.text,
+                    error = null
+                )
+            }
+        }
+
+        // 오류 응답 생성 유틸리티 함수
+        fun errorResponseFlow(errorMessage: String): Flow<StreamingChatResponse> = flow {
+            emit(StreamingChatResponse(
+                isComplete = true,
+                text = null,
+                error = errorMessage
+            ))
         }
     }
 }

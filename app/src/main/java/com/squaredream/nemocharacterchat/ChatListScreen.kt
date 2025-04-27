@@ -1,5 +1,6 @@
 package com.squaredream.nemocharacterchat.ui.screens
 
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,22 +12,64 @@ import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.squaredream.nemocharacterchat.MainApplication
 import com.squaredream.nemocharacterchat.R
 import com.squaredream.nemocharacterchat.data.ChatRoom
+import com.squaredream.nemocharacterchat.data.PreferencesManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ChatListScreen(navController: NavController) {
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val preferencesManager = PreferencesManager(context)
+
+    // 채팅방 목록 화면에 들어오면 모든 캐릭터의 세션을 미리 초기화
+    LaunchedEffect(key1 = true) {
+        // API 키가 설정되어 있는지 확인
+        if (preferencesManager.isKeySet()) {
+            val apiKey = preferencesManager.getApiKey()
+
+            // 세션 매니저에 API 키가 설정되어 있지 않다면 설정
+            if (apiKey.isNotEmpty()) {
+                coroutineScope.launch(Dispatchers.IO) {
+                    try {
+                        // 세션 매니저 초기화
+                        MainApplication.sessionManager.initialize(apiKey)
+
+                        // 모든 캐릭터의 세션을 백그라운드에서 미리 생성
+                        withContext(Dispatchers.IO) {
+                            try {
+                                MainApplication.sessionManager.getOrCreateSharedSession(apiKey, forceCreate = false)
+                                Log.d("ChatListScreen", "Session preloaded")
+                            } catch (e: Exception) {
+                                Log.e("ChatListScreen", "Failed to preload session: ${e.message}")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ChatListScreen", "Error initializing sessions: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -36,8 +79,7 @@ fun ChatListScreen(navController: NavController) {
             )
         }
     ) { paddingValues ->
-        // 채팅방 목록 데이터 (추후 실제 데이터로 교체 가능)
-        // ChatListScreen.kt - chatRooms 리스트에서 Gemini 항목 제거
+        // 채팅방 목록 데이터
         val chatRooms = listOf(
             ChatRoom(
                 id = "raiden",
