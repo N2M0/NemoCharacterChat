@@ -1,8 +1,12 @@
 package com.squaredream.nemocharacterchat.data
 
+import android.R.attr.content
+import android.R.id.content
 import android.util.Log
 import com.google.ai.client.generativeai.Chat
 import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.Content
+import com.google.ai.client.generativeai.type.content
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -398,58 +402,94 @@ class GeminiChatService {
                 Log.d(TAG, "Restoring session for character: $characterId with ${savedMessages.size} messages")
                 Log.d(TAG, "Force reinitialization: $forceReinitialize")
 
-                // 효율적인 처리를 위한 준비 작업을 병렬로 수행
-                coroutineScope {
-                    // 1. 세션 초기화 작업 시작 (비동기) - forceReinitialize 매개변수 전달
-                    val initJob = async {
-                        initializeCharacterChat(apiKey, characterId, forceReinitialize = forceReinitialize)
-                    }
+                // 1. 세션 초기화 작업 시작
+                val characterChat = initializeCharacterChat(apiKey, characterId, forceReinitialize)
 
-                    // 2. 복원할 메시지 필터링 작업 (비동기)
-                    val messagesJob = async {
-                        savedMessages.filter {
-                            it.id != "1"
-                        }
-                    }
+                // 2. 복원할 메시지 필터링
+                val messagesToRestore = savedMessages.filter { it.id != "1" }
 
-                    // 두 작업이 모두 완료될 때까지 대기
-                    val characterChat = initJob.await()
-                    val messagesToRestore = messagesJob.await()
-
-                    // 메시지가 없으면 복원 완료 (새 대화 시작)
-                    if (messagesToRestore.isEmpty()) {
-                        Log.d(TAG, "No messages to restore. Session initialized with persona only.")
-                        return@coroutineScope true
-                    }
-
-                    // 3. 모든 메시지 복원 - 제한 없이 모든 대화 내역 전송
-                    Log.d(TAG, "Restoring all ${messagesToRestore.size} messages to maintain complete context")
-
-                    // 청크 단위로 병렬 처리 (단, 순서 보장)
-                    // 병렬처리 하면 안됨. 대화 맥락 꼬임. 직렬처리로 바꾸기 애매해서 일단 청크 사이즈 충분히 크게 땜질해둠. (리팩토링 필요)
-                    val chunkSize = 10000 // 한 번에 처리할 메시지 청크 크기
-                    val results = messagesToRestore.chunked(chunkSize).map { chunk ->
-                        async {
-                            // 각 청크는 순차적으로 처리 (순서 유지 필요)
-                            chunk.forEach { message ->
-                                try {
-                                    Log.d(TAG, "Restoring message: ${message.text}...")
-                                    characterChat.chat.sendMessage(message.text)
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Error restoring message: ${e.message}")
-                                    // 개별 메시지 오류는 무시하고 계속 진행
-                                }
-                            }
-                            true
-                        }
-                    }
-
-                    // 모든 청크 처리 완료 대기
-                    results.awaitAll()
-                    Log.d(TAG, "Session restored successfully with all ${messagesToRestore.size} messages")
+                // 메시지가 없으면 복원 완료 (새 대화 시작)
+                if (messagesToRestore.isEmpty()) {
+                    Log.d(TAG, "No messages to restore. Session initialized with persona only.")
+                    return@withContext true
                 }
 
-                return@withContext true
+                try {
+                    // 3. 모델 가져오기
+                    val model = getOrCreateModel(apiKey)
+
+                    // 캐릭터 프롬프트 가져오기
+                    val characterPrompt = CHARACTER_PROMPTS[characterId] ?: CHARACTER_PROMPTS["raiden"]!!
+
+                    // Chat 객체 생성 시 초기 history를 제공하기 위한 준비
+                    val initialHistory = mutableListOf<Content>()
+
+                    // 캐릭터 프롬프트 메시지 추가
+                    initialHistory.add(content {
+                        role = "user"
+                        text(characterPrompt)
+                    })
+
+                    // 첫 번째 AI 응답 추가 (첫 인사말)
+                    val firstAiMessage = savedMessages.firstOrNull { it.type == MessageType.RECEIVED }
+                    firstAiMessage?.let {
+                        initialHistory.add(content {
+                            role = "model"
+                            text(it.text)
+                        })
+                    }
+
+                    // 나머지 메시지들 추가
+                    messagesToRestore.forEach { message ->
+                        val role = if (message.type == MessageType.SENT) "user" else "model"
+                        initialHistory.add(content {
+                            this.role = role
+                            text(message.text)
+                        })
+                    }
+
+                    // 4. 초기 히스토리를 포함한 Chat 객체 생성
+                    val newChat = Chat(model, initialHistory)
+
+                    // 5. 캐릭터 채팅 정보 업데이트
+                    val chatKey = "$characterId:$apiKey"
+                    val updatedChatInfo = CharacterChatInfo(
+                        chat = newChat,
+                        apiKey = apiKey,
+                        characterId = characterId,
+                        isInitialized = true,
+                        lastActivity = System.currentTimeMillis()
+                    )
+
+                    // 세션 캐시 업데이트
+                    characterChats[chatKey] = updatedChatInfo
+                    initializedCharacters.add(chatKey)
+
+                    Log.d(TAG, "Session restored successfully with all ${messagesToRestore.size} messages using chat history")
+                    return@withContext true
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error creating chat history: ${e.message}", e)
+
+                    // 대체 방법: 기존 방식으로 폴백
+                    Log.d(TAG, "Falling back to individual message restoration")
+
+                    // 기존 방식으로 메시지 하나씩 전송
+                    messagesToRestore.forEach { message ->
+                        try {
+                            if (message.type == MessageType.SENT) {
+                                characterChat.chat.sendMessage(message.text)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error restoring individual message: ${e.message}")
+                            // 개별 메시지 오류는 무시하고 계속 진행
+                        }
+                    }
+
+                    Log.d(TAG, "Session restored with fallback method")
+                    return@withContext true
+                }
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error restoring session: ${e.message}", e)
                 return@withContext false

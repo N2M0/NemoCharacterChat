@@ -1,5 +1,4 @@
 package com.squaredream.nemocharacterchat.ui.screens
-import androidx.compose.foundation.Image
 import com.squaredream.nemocharacterchat.data.GeminiChatService
 import kotlinx.coroutines.delay
 
@@ -20,15 +19,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
 import com.squaredream.nemocharacterchat.R
 import com.squaredream.nemocharacterchat.data.Character
@@ -39,8 +34,10 @@ import com.squaredream.nemocharacterchat.data.PreferencesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import android.util.Log
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.isActive
@@ -664,18 +661,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
         // 상단 앱바 (메뉴 추가)
         TopAppBar(
             title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Image(
-                        painter = painterResource(id = character.profileImage),
-                        contentDescription = "${character.name} 프로필",
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = character.name)
-                }
+                Text(text = character.name)  // 이름만 표시
             },
             navigationIcon = {
                 IconButton(onClick = { navController.popBackStack() }) {
@@ -722,7 +708,12 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 contentPadding = PaddingValues(top = 8.dp, bottom = 70.dp)
             ) {
                 items(messages, key = { it.id }) { message ->
-                    MessageItem(message = message)
+                    // 캐릭터 메시지일 경우에만 character 전달
+                    if (message.type == MessageType.RECEIVED && message.sender != "티바트 시스템") {
+                        MessageItem(message = message, character = character)
+                    } else {
+                        MessageItem(message = message, character = character)
+                    }
                 }
             }
 
@@ -801,7 +792,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
 }
 
 @Composable
-fun MessageItem(message: Message) {
+fun MessageItem(message: Message, character: Character? = null) {
     // 시스템 메시지 처리
     if (message.sender == "티바트 시스템") {
         Box(
@@ -829,19 +820,18 @@ fun MessageItem(message: Message) {
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (message.type == MessageType.SENT) Alignment.End else Alignment.Start
     ) {
-        // 발신자 이름 (받은 메시지의 경우)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (message.type == MessageType.SENT) Arrangement.End else Arrangement.Start
-        ) {
-            if (message.type == MessageType.RECEIVED) {
-                Text(
-                    text = message.sender,
-                    fontSize = 12.sp,
-                    color = Color.Gray,
-                    modifier = Modifier.padding(bottom = 2.dp)
-                )
-            }
+        // 발신자 정보 (받은 메시지의 경우에만 프로필 이미지 표시)
+        if (message.type == MessageType.RECEIVED && character != null) {
+            // 이름 대신 프로필 이미지 표시
+            Image(
+                painter = painterResource(id = character.profileImage),
+                contentDescription = "${character.name} 프로필",
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(CircleShape)
+                    .padding(bottom = 2.dp),
+                contentScale = ContentScale.Crop
+            )
         }
 
         // 메시지 말풍선과 시간
