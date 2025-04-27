@@ -349,13 +349,30 @@ fun ChatScreen(navController: NavController, characterId: String) {
         }
     }
 
-    // 채팅방을 나갈 때 채팅 내역 저장
+    // 채팅방을 나갈 때 채팅 내역 저장 (로딩 메시지 제외)
+    // 나중에 리팩토링 필요. 일단 문구 하드코딩으로 필터링
     DisposableEffect(characterId) {
         onDispose {
             if (messages.isNotEmpty()) {
                 // 코루틴 컨텍스트 밖에서 호출되므로 GlobalScope 사용
                 GlobalScope.launch {
-                    chatHistoryManager.saveChatHistory(characterId, messages)
+                    // 로딩 메시지 필터링 - "입력 중..."으로 시작하는 메시지 제외
+                    val filteredMessages = messages.filter { message ->
+                        // 마지막 AI 메시지가 로딩 메시지인 경우 제외
+                        !(message.type == MessageType.RECEIVED &&
+                                (message.text == "입력 중..." ||
+                                        message.text.startsWith("지맥 상태 분석 중") ||
+                                        message.text.startsWith("지맥 네트워크에 침투 중") ||
+                                        message.text.startsWith("지맥에서 데이터 추출 중") ||
+                                        message.text.startsWith("추출한 데이터를 파악하는 중") ||
+                                        message.text.startsWith("파악한 데이터를 출력하는 중") ||
+                                        message.text.startsWith("오류 확인 중") ||
+                                        message.text.startsWith("조금만 더 기다려주세요")))
+                    }
+
+                    // 필터링된 메시지만 저장
+                    chatHistoryManager.saveChatHistory(characterId, filteredMessages)
+                    Log.d("ChatScreen", "Saved ${filteredMessages.size} messages, filtered out loading messages")
                 }
             }
         }
