@@ -10,6 +10,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -18,6 +19,13 @@ import kotlinx.coroutines.withContext
  * 최적화된 버전 - 중복 API 호출 제거, 이전 대화 내역 복원 기능 추가
  */
 class GeminiChatService {
+
+    data class StreamingChatResponse(
+        val isComplete: Boolean,  // 응답이 완료되었는지 여부
+        val text: String?,        // 현재까지 받은 응답 텍스트
+        val error: String?        // 오류 메시지 (있는 경우)
+    )
+
     companion object {
         private const val TAG = "GeminiChatService"
         private const val MODEL_NAME = "gemini-2.5-flash-preview-04-17"
@@ -38,7 +46,7 @@ class GeminiChatService {
         private val cachedPrompts = mutableMapOf<String, String>()
 
         // 캐릭터별 프롬프트 템플릿
-        private val CHARACTER_PROMPTS = mapOf(
+        public val CHARACTER_PROMPTS = mapOf(
             "raiden" to """
             별도의 웹 검색 없이 작업하세요.
             우선 당신이 알고 있는 원신 게임 세계관을 한국어 공식 표기를 기준으로 떠올리세요.
@@ -119,12 +127,6 @@ class GeminiChatService {
             val characterId: String,     // 캐릭터 ID
             val isInitialized: Boolean,   // 초기화 여부
             val lastActivity: Long
-        )
-
-        data class StreamingChatResponse(
-            val isComplete: Boolean,  // 응답이 완료되었는지 여부
-            val text: String?,        // 현재까지 받은 응답 텍스트
-            val error: String?        // 오류 메시지 (있는 경우)
         )
 
         /**
@@ -532,6 +534,25 @@ class GeminiChatService {
         fun clearModelCache() {
             generativeModels.clear()
             Log.d(TAG, "Model cache cleared")
+        }
+
+        fun transformResponseStream(stream: Flow<com.google.ai.client.generativeai.type.GenerateContentResponse>): Flow<StreamingChatResponse> {
+            return stream.map { response ->
+                StreamingChatResponse(
+                    isComplete = false,
+                    text = response.text,
+                    error = null
+                )
+            }
+        }
+
+        // 오류 응답 생성 유틸리티 함수
+        fun errorResponseFlow(errorMessage: String): Flow<StreamingChatResponse> = flow {
+            emit(StreamingChatResponse(
+                isComplete = true,
+                text = null,
+                error = errorMessage
+            ))
         }
     }
 }

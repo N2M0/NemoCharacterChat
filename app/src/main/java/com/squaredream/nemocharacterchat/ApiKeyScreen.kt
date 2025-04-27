@@ -38,6 +38,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
+import com.squaredream.nemocharacterchat.MainApplication
 import com.squaredream.nemocharacterchat.data.GeminiService
 import com.squaredream.nemocharacterchat.data.PreferencesManager
 import com.squaredream.nemocharacterchat.ui.theme.NemoCharacterChatTheme
@@ -157,6 +158,10 @@ private fun saveApiKey(
 ) {
     preferencesManager.saveApiKey(apiKey)
     preferencesManager.setKeyStatus(true)
+
+    // SessionManager에도 API 키 업데이트
+    MainApplication.sessionManager.updateApiKey(apiKey)
+
     Toast.makeText(context, "API 키가 저장되었습니다", Toast.LENGTH_SHORT).show()
 }
 

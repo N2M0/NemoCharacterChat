@@ -388,7 +388,6 @@ fun ChatScreen(navController: NavController, characterId: String) {
     }
 
 // ===== 메시지 전송 함수 ===== (스트리밍 버전)
-// ===== 메시지 전송 함수 ===== (스트리밍 버전)
 fun sendMessage() {
     // 메시지가 비어있거나 이미 로딩 중이면 무시
     if (newMessageText.isBlank() || isLoading || isInitializing) return
