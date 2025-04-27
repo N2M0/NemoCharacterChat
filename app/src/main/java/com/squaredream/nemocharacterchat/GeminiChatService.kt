@@ -331,22 +331,74 @@ class GeminiChatService {
         }
 
         /**
+         * 캐릭터 세션이 이미 존재하는지 확인합니다.
+         *
+         * @param apiKey API 키
+         * @param characterId 캐릭터 ID
+         * @return 세션이 존재하면 true, 아니면 false
+         */
+        suspend fun checkSessionExists(apiKey: String, characterId: String): Boolean = withContext(Dispatchers.IO) {
+            val chatKey = "$characterId:$apiKey"
+            val exists = characterChats.containsKey(chatKey) && characterChats[chatKey]?.isInitialized == true
+            Log.d(TAG, "Session exists for $characterId: $exists")
+            return@withContext exists
+        }
+
+        /**
+         * 환영 메시지를 가져옵니다.
+         * 세션 상태와 관계없이 캐릭터의 첫 인사말을 반환합니다.
+         * 기존 세션이 있어도 항상 새로운 응답을 생성합니다.
+         *
+         * @param apiKey API 키
+         * @param characterId 캐릭터 ID
+         * @return 캐릭터의 환영 메시지
+         */
+        suspend fun getWelcomeMessage(apiKey: String, characterId: String): String = withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Getting welcome message for character: $characterId")
+
+                // 캐싱된 모델 사용
+                val generativeModel = getOrCreateModel(apiKey)
+
+                // 캐릭터 프롬프트 가져오기
+                val characterPrompt = CHARACTER_PROMPTS[characterId] ?: CHARACTER_PROMPTS["raiden"]!!
+
+                // 세션과 별개로 첫 인사말만 가져오기 (세션 초기화 없이 응답만 받음)
+                val response = generativeModel.generateContent(characterPrompt)
+                val welcomeMessage = response.text ?: "안녕하세요, 여행자."
+
+                Log.d(TAG, "Welcome message generated: ${welcomeMessage.take(30)}...")
+                return@withContext welcomeMessage
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting welcome message: ${e.message}", e)
+                return@withContext "ERROR"
+            }
+        }
+
+        /**
          * 세션을 복원하고 이전 대화 내역을 전송합니다.
-         * 비동기 처리 최적화 버전
+         * forceReinitialize 매개변수로 세션 재초기화 여부를 제어합니다.
+         *
+         * @param apiKey API 키
+         * @param characterId 캐릭터 ID
+         * @param savedMessages 저장된 메시지 목록
+         * @param forceReinitialize 세션을 강제로 재초기화할지 여부 (기본값: false)
          */
         suspend fun restoreSession(
             apiKey: String,
             characterId: String,
-            savedMessages: List<Message>
+            savedMessages: List<Message>,
+            forceReinitialize: Boolean = false
         ): Boolean = withContext(Dispatchers.IO) {
             try {
                 Log.d(TAG, "Restoring session for character: $characterId with ${savedMessages.size} messages")
+                Log.d(TAG, "Force reinitialization: $forceReinitialize")
 
                 // 효율적인 처리를 위한 준비 작업을 병렬로 수행
                 coroutineScope {
-                    // 1. 세션 초기화 작업 시작 (비동기)
+                    // 1. 세션 초기화 작업 시작 (비동기) - forceReinitialize 매개변수 전달
                     val initJob = async {
-                        initializeCharacterChat(apiKey, characterId, forceReinitialize = true)
+                        initializeCharacterChat(apiKey, characterId, forceReinitialize = forceReinitialize)
                     }
 
                     // 2. 복원할 메시지 필터링 작업 (비동기)
