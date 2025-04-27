@@ -258,7 +258,8 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     if (index < initializingMessages.size - 1) {
                         index++
                         // 메시지 업데이트
-                        val updatedMessage = messages.last().copy(text = initializingMessages[index])
+                        val updatedMessage =
+                            messages.last().copy(text = initializingMessages[index])
                         messages[0] = updatedMessage  // 첫 번째 메시지 업데이트
                     } else {
                         // 마지막 메시지("오류 확인 중...") 도달 시 더 이상 변경하지 않음
@@ -319,25 +320,29 @@ fun ChatScreen(navController: NavController, characterId: String) {
             progressJob?.cancel()
 
             if (initialResponse == "ERROR") {
-                // 오류 발생 시 시스템 메시지 표시
+                // 오류 발생 시 티바트 시스템 메시지 표시
                 messages.clear()  // 진행 상태 메시지 제거
-                messages.add(Message(
-                    id = "1",
-                    text = "지맥 오류 발생! 우측 상단 메뉴의 초기화 기능을 사용해주세요.",
-                    timestamp = getCurrentTime(),
-                    type = MessageType.RECEIVED,
-                    sender = "티바트 시스템"
-                ))
+                messages.add(
+                    Message(
+                        id = "1",
+                        text = "지맥 오류가 발생했습니다. 네트워크 상태 확인 후 우측 상단 채팅 초기화 기능을 사용해주세요.",
+                        timestamp = getCurrentTime(),
+                        type = MessageType.RECEIVED,
+                        sender = "티바트 시스템"
+                    )
+                )
             } else {
                 // 캐릭터의 첫 인사말을 화면에 직접 표시
                 messages.clear()  // 진행 상태 메시지 제거
-                messages.add(Message(
-                    id = "1",
-                    text = initialResponse,
-                    timestamp = getCurrentTime(),
-                    type = MessageType.RECEIVED,
-                    sender = character.name
-                ))
+                messages.add(
+                    Message(
+                        id = "1",
+                        text = initialResponse,
+                        timestamp = getCurrentTime(),
+                        type = MessageType.RECEIVED,
+                        sender = character.name
+                    )
+                )
 
                 // 내부 대화 기록은 빈 상태로 시작 (사용자의 첫 메시지가 없으므로)
                 internalChatHistory = emptyList()
@@ -351,15 +356,35 @@ fun ChatScreen(navController: NavController, characterId: String) {
             // 진행 상태 업데이트 중지
             progressJob?.cancel()
 
-            // 예외 발생 시 시스템 메시지 표시
-            messages.clear()  // 진행 상태 메시지 제거
-            messages.add(Message(
-                id = "1",
-                text = "지맥 오류 발생! 우측 상단 메뉴의 초기화 기능을 사용해주세요.",
-                timestamp = getCurrentTime(),
-                type = MessageType.RECEIVED,
-                sender = "티바트 시스템"
-            ))
+            // 예외 발생 시 상세한 오류 로깅
+            Log.e("ChatScreen", "Error initializing chat: ${e.message}", e)
+
+            // 사용자에게 보여줄 오류 메시지 설정
+            val errorMessage = when {
+                e.message?.contains("network", ignoreCase = true) == true ->
+                    "지맥 오류가 발생했습니다. 네트워크 상태 확인 후 우측 상단 채팅 초기화 기능을 사용해주세요."
+                //"네트워크 연결 오류가 발생했습니다. 인터넷 연결을 확인하고 다시 시도해주세요."
+                e.message?.contains("timeout", ignoreCase = true) == true ->
+                    "지맥 오류가 발생했습니다. 서버 상태 확인 후 우측 상단 채팅 초기화 기능을 사용해주세요."
+                //"서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."
+                e.message?.contains("api", ignoreCase = true) == true ->
+                    "API 키 관련 오류가 발생했습니다. API 키 설정 혹은 남은 사용량을 확인해주세요."
+
+                else ->
+                    "지맥 오류가 발생했습니다. 우측 상단 메뉴의 채팅 초기화 기능을 사용해주세요."
+            }
+
+            // 진행 상태 메시지 제거하고 오류 메시지 표시
+            messages.clear()
+            messages.add(
+                Message(
+                    id = "1",
+                    text = errorMessage,
+                    timestamp = getCurrentTime(),
+                    type = MessageType.RECEIVED,
+                    sender = "티바트 시스템"
+                )
+            )
 
             isInitializing = false
             placeholderText = "메시지 입력"

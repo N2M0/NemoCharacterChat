@@ -351,7 +351,7 @@ class GeminiChatService {
          *
          * @param apiKey API 키
          * @param characterId 캐릭터 ID
-         * @return 캐릭터의 환영 메시지
+         * @return 캐릭터의 환영 메시지 또는 ERROR 문자열
          */
         suspend fun getWelcomeMessage(apiKey: String, characterId: String): String = withContext(Dispatchers.IO) {
             try {
@@ -365,7 +365,12 @@ class GeminiChatService {
 
                 // 세션과 별개로 첫 인사말만 가져오기 (세션 초기화 없이 응답만 받음)
                 val response = generativeModel.generateContent(characterPrompt)
-                val welcomeMessage = response.text ?: "안녕하세요, 여행자."
+                val welcomeMessage = response.text
+
+                if (welcomeMessage.isNullOrBlank()) {
+                    Log.e(TAG, "Generated welcome message is null or blank")
+                    return@withContext "ERROR"
+                }
 
                 Log.d(TAG, "Welcome message generated: ${welcomeMessage.take(30)}...")
                 return@withContext welcomeMessage
