@@ -302,7 +302,7 @@ class GeminiChatService {
                 try {
                     Log.d(TAG, "Sending character persona prompt")
                     val response = chat.sendMessage(characterPrompt)
-                    Log.d(TAG, "Character persona set successfully: ${response.text?.take(30)}")
+                    Log.d(TAG, "Character persona set successfully: ${response.text}")
                     initializedCharacters.add(chatKey)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error setting character persona: ${e.message}")
@@ -426,13 +426,14 @@ class GeminiChatService {
                     Log.d(TAG, "Restoring all ${messagesToRestore.size} messages to maintain complete context")
 
                     // 청크 단위로 병렬 처리 (단, 순서 보장)
-                    val chunkSize = 5 // 한 번에 처리할 메시지 청크 크기
+                    // 병렬처리 하면 안됨. 대화 맥락 꼬임. 직렬처리로 바꾸기 애매해서 일단 청크 사이즈 충분히 크게 땜질해둠. (리팩토링 필요)
+                    val chunkSize = 10000 // 한 번에 처리할 메시지 청크 크기
                     val results = messagesToRestore.chunked(chunkSize).map { chunk ->
                         async {
                             // 각 청크는 순차적으로 처리 (순서 유지 필요)
                             chunk.forEach { message ->
                                 try {
-                                    Log.d(TAG, "Restoring message: ${message.text.take(30)}...")
+                                    Log.d(TAG, "Restoring message: ${message.text}...")
                                     characterChat.chat.sendMessage(message.text)
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Error restoring message: ${e.message}")
