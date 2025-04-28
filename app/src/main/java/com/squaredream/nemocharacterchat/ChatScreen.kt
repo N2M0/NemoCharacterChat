@@ -887,10 +887,10 @@ fun MessageItem(message: Message, character: Character? = null) {
                     .widthIn(max = 260.dp)
                     .clip(
                         RoundedCornerShape(
-                            topStart = 16.dp,
+                            topStart = if (message.type == MessageType.SENT) 16.dp else 0.dp,
                             topEnd = 16.dp,
-                            bottomStart = if (message.type == MessageType.SENT) 16.dp else 0.dp,
-                            bottomEnd = if (message.type == MessageType.SENT) 0.dp else 16.dp
+                            bottomStart = 16.dp,
+                            bottomEnd = 16.dp
                         )
                     )
                     .background(bubbleColor)
@@ -898,10 +898,10 @@ fun MessageItem(message: Message, character: Character? = null) {
                         width = 0.5.dp,
                         color = bubbleBorderColor,
                         shape = RoundedCornerShape(
-                            topStart = 16.dp,
+                            topStart = if (message.type == MessageType.SENT) 16.dp else 0.dp,
                             topEnd = 16.dp,
-                            bottomStart = if (message.type == MessageType.SENT) 16.dp else 0.dp,
-                            bottomEnd = if (message.type == MessageType.SENT) 0.dp else 16.dp
+                            bottomStart = 16.dp,
+                            bottomEnd = 16.dp
                         )
                     )
                     .padding(12.dp)
