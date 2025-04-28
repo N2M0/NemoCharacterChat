@@ -755,7 +755,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                         modifier = Modifier
                             .weight(1f)
                             .padding(end = 8.dp)
-                            .height(56.dp), // 높이 고정
+                            .heightIn(min = 56.dp), // 최소 높이만 설정하고 최대 높이는 제한 없음
                         enabled = !isLoading && !isInitializing,
                         colors = TextFieldDefaults.outlinedTextFieldColors(
                             focusedBorderColor = NavyBlue,
@@ -768,8 +768,8 @@ fun ChatScreen(navController: NavController, characterId: String) {
                             fontSize = 16.sp,
                             lineHeight = 24.sp // 줄 간격 넉넉하게 조정
                         ),
-                        maxLines = 1, // 한 줄로 제한
-                        singleLine = true, // 한 줄 입력 모드로 설정
+                        maxLines = 4, // 최대 4줄까지 표시
+                        singleLine = false, // 여러 줄 입력 가능하도록 설정
                         shape = RoundedCornerShape(24.dp)
                     )
 
