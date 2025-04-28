@@ -734,7 +734,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .padding(horizontal = 8.dp, vertical = 12.dp)
+                    .padding(horizontal = 8.dp, vertical = 9.dp)
                     .imePadding() // 키보드가 올라올 때 입력 필드 위치 조정
             ) {
                 Row(
