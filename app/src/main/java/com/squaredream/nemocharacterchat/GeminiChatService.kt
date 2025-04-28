@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -33,14 +35,15 @@ class GeminiChatService {
         private const val TAG = "GeminiChatService"
         private const val MODEL_NAME = "gemini-2.5-flash-preview-04-17"
 
-        // 세션 초기화 진행 상태
-        private var sessionInitializationInProgress = mutableMapOf<String, Boolean>()
+        // 세션 초기화 작업과 결과를 추적하는 맵
+        // 키: "$characterId:$apiKey", 값: 진행 중인 초기화 작업
+        private val sessionInitTasks = mutableMapOf<String, kotlinx.coroutines.Deferred<CharacterChatInfo?>>()
+        
+        // 세션 초기화 작업 동기화를 위한 뮤텍스
+        private val sessionInitMutex = kotlinx.coroutines.sync.Mutex()
 
         // 캐릭터별 세션 캐시
         private var characterChats = mutableMapOf<String, CharacterChatInfo>()
-
-        // 세션 초기화 상태 추적
-        private var initializedCharacters = mutableSetOf<String>()
 
         // 모델 캐싱 - API 키별로 GenerativeModel 인스턴스 재사용
         private var generativeModels = mutableMapOf<String, GenerativeModel>()
@@ -143,7 +146,6 @@ class GeminiChatService {
 
                 // 세션 캐시에 저장
                 characterChats[sessionKey] = characterChat
-                initializedCharacters.add(sessionKey)
                 
                 Log.d(TAG, "Chat session initialized and cached")
                 
@@ -157,6 +159,7 @@ class GeminiChatService {
         /**
          * 캐릭터의 채팅 세션을 초기화합니다.
          * 이미 초기화된 세션이 있다면 재사용하고, 없으면 새로 생성합니다.
+         * 동시에 여러 곳에서 같은 세션 초기화를 요청하면 하나의 작업만 실행되도록 동기화합니다.
          */
         private suspend fun initializeCharacterChat(
             apiKey: String,
@@ -166,20 +169,12 @@ class GeminiChatService {
             // 세션 키 (캐릭터ID:API키)
             val chatKey = "$characterId:$apiKey"
 
-            // 초기화 중인지 확인
-            if (sessionInitializationInProgress[chatKey] == true) {
-                // 초기화가 진행 중이면 완료될 때까지 대기
-                var count = 0
-                while (sessionInitializationInProgress[chatKey] == true && count < 10) {
-                    delay(100) // 300ms 대기
-                    count++
-                }
-            }
-
-            // 강제 재초기화인 경우 기존 세션 제거
+            // 강제 재초기화인 경우 기존 세션 및 진행중인 작업 제거
             if (forceReinitialize) {
-                characterChats.remove(chatKey)
-                initializedCharacters.remove(chatKey)
+                sessionInitMutex.withLock {
+                    characterChats.remove(chatKey)
+                    sessionInitTasks.remove(chatKey)
+                }
             }
 
             // 기존 세션이 있고 재초기화가 아니면 재사용
@@ -192,55 +187,77 @@ class GeminiChatService {
                 }
             }
 
-            // 세션 초기화 시작 표시
-            sessionInitializationInProgress[chatKey] = true
+            // 초기화 작업이 이미 진행 중인지 확인하고 작업을 시작하거나 기존 작업 결과를 대기
+            val initTask = sessionInitMutex.withLock {
+                // 이미 진행 중인 작업이 있으면 그것을 사용
+                sessionInitTasks[chatKey] ?: coroutineScope {
+                    // 없으면 새 작업 시작
+                    val newTask = async {
+                        try {
+                            // 새 세션 생성
+                            Log.d(TAG, "Creating new chat for character: $characterId")
 
-            try {
-                // 새 세션 생성
-                Log.d(TAG, "Creating new chat for character: $characterId")
+                            // 캐싱된 Gemini 모델 가져오기
+                            val generativeModel = getOrCreateModel(apiKey)
 
-                // 캐싱된 Gemini 모델 가져오기
-                val generativeModel = getOrCreateModel(apiKey)
+                            // 캐릭터 프롬프트 가져오기
+                            val characterPrompt = cachedPrompts[characterId] ?: run {
+                                // 없으면 CharacterRepository에서 가져와서 캐싱
+                                val prompt = CharacterRepository.getCharacterPrompt(characterId)
+                                cachedPrompts[characterId] = prompt
+                                prompt
+                            }
 
-                // 캐릭터 프롬프트 가져오기
-                val characterPrompt = cachedPrompts[characterId] ?: run {
-                    // 없으면 CharacterRepository에서 가져와서 캐싱
-                    val prompt = CharacterRepository.getCharacterPrompt(characterId)
-                    cachedPrompts[characterId] = prompt
-                    prompt
+                            // 새 채팅 세션 시작
+                            val chat = generativeModel.startChat()
+
+                            // 항상 페르소나 설정 프롬프트 전송 (이전 초기화 상태 무시)
+                            try {
+                                Log.d(TAG, "Sending character persona prompt")
+                                val response = chat.sendMessage(characterPrompt)
+                                Log.d(TAG, "Character persona set successfully: ${response.text?.take(50)}...")
+                                
+                                // 새 채팅 정보 생성
+                                val characterChat = CharacterChatInfo(
+                                    chat = chat,
+                                    apiKey = apiKey,
+                                    characterId = characterId,
+                                    isInitialized = true,
+                                    lastActivity = System.currentTimeMillis()
+                                )
+
+                                // 세션 캐시에 저장
+                                characterChats[chatKey] = characterChat
+                                
+                                characterChat
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error setting character persona: ${e.message}", e)
+                                null
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error creating chat session: ${e.message}", e)
+                            null
+                        } finally {
+                            // 작업 완료 후 맵에서 제거
+                            sessionInitMutex.withLock {
+                                sessionInitTasks.remove(chatKey)
+                            }
+                        }
+                    }
+                    
+                    // 새 작업 등록
+                    sessionInitTasks[chatKey] = newTask
+                    newTask
                 }
+            }
 
-                // 새 채팅 세션 시작
-                val chat = generativeModel.startChat()
-
-                // 항상 페르소나 설정 프롬프트 전송 (이전 초기화 상태 무시)
-                try {
-                    Log.d(TAG, "Sending character persona prompt")
-                    val response = chat.sendMessage(characterPrompt)
-                    Log.d(TAG, "Character persona set successfully: ${response.text}")
-                    initializedCharacters.add(chatKey)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error setting character persona: ${e.message}")
-                    sessionInitializationInProgress[chatKey] = false
-                    throw e  // 초기화 실패 시 예외 전파
-                }
-
-                // 새 채팅 정보 생성 및 캐시에 저장
-                val characterChat = CharacterChatInfo(
-                    chat = chat,
-                    apiKey = apiKey,
-                    characterId = characterId,
-                    isInitialized = true,
-                    lastActivity = System.currentTimeMillis()
-                )
-
-                characterChats[chatKey] = characterChat
-                sessionInitializationInProgress[chatKey] = false
-                return@withContext characterChat
-            } catch (e: Exception) {
-                // 오류 발생 시 초기화 상태 정리
-                sessionInitializationInProgress[chatKey] = false
-                throw e
+            // 작업 결과 대기 및 반환
+            val result = initTask.await()
+            
+            if (result != null) {
+                return@withContext result
+            } else {
+                throw Exception("Failed to initialize chat session for character: $characterId")
             }
         }
 
@@ -379,7 +396,6 @@ class GeminiChatService {
                     if (forceReinitialize) {
                         // 기존 세션 제거
                         characterChats.remove(chatKey)
-                        initializedCharacters.remove(chatKey)
                     }
 
                     // 5. 초기 히스토리를 포함한 Chat 객체 생성
@@ -397,7 +413,6 @@ class GeminiChatService {
 
                     // 세션 캐시 업데이트
                     characterChats[chatKey] = updatedChatInfo
-                    initializedCharacters.add(chatKey)
 
                     Log.d(TAG, "Session restored successfully with history using optimized method")
                     return@withContext true
@@ -539,7 +554,6 @@ class GeminiChatService {
 
             sessionsToRemove.forEach { key ->
                 characterChats.remove(key)
-                initializedCharacters.remove(key)
                 Log.d(TAG, "Cleaned up inactive session: $key")
             }
 
@@ -551,8 +565,7 @@ class GeminiChatService {
          */
         fun clearAllChats() {
             characterChats.clear()
-            initializedCharacters.clear()
-            sessionInitializationInProgress.clear()
+            sessionInitTasks.clear()
             // 모델 캐시는 유지 (API 키 변경 시에만 초기화)
             Log.d(TAG, "All character chats and initialization states cleared")
         }
@@ -562,8 +575,7 @@ class GeminiChatService {
          */
         fun clearCharacterChat(characterId: String) {
             characterChats.entries.removeIf { it.key.startsWith("$characterId:") }
-            initializedCharacters.removeIf { it.startsWith("$characterId:") }
-            sessionInitializationInProgress.entries.removeIf { it.key.startsWith("$characterId:") }
+            sessionInitTasks.entries.removeIf { it.key.startsWith("$characterId:") }
             Log.d(TAG, "Chat and initialization state cleared for character: $characterId")
         }
 

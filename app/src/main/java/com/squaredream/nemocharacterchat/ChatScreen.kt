@@ -385,8 +385,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
         }
     }
 
-    // 채팅방을 나갈 때 채팅 내역 저장 (로딩 메시지 제외)
-    // 나중에 리팩토링 필요. 일단 문구 하드코딩으로 필터링
+    // 채팅방을 나갈 때 채팅 내역 저장 및 미사용 세션 정리
     DisposableEffect(characterId) {
         onDispose {
             if (messages.isNotEmpty()) {
@@ -409,6 +408,9 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     // 필터링된 메시지만 저장
                     chatHistoryManager.saveChatHistory(characterId, filteredMessages)
                     Log.d("ChatScreen", "Saved ${filteredMessages.size} messages, filtered out loading messages")
+                    
+                    // 미사용 세션 정리 (30분 이상 사용하지 않은 세션)
+                    GeminiChatService.cleanupUnusedSessions(30)
                 }
             }
         }
