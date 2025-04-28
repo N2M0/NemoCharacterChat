@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -733,27 +734,40 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .padding(horizontal = 4.dp, vertical = 8.dp)
+                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                    .imePadding() // 키보드가 올라올 때 입력 필드 위치 조정
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // 메시지 입력 필드
                     OutlinedTextField(
                         value = newMessageText,
                         onValueChange = { newMessageText = it },
-                        placeholder = { Text(text = placeholderText, color = Color.Gray) },
+                        placeholder = { 
+                            Text(
+                                text = placeholderText, 
+                                color = Color.Gray,
+                                modifier = Modifier.padding(top = 0.dp) // 패딩 제거
+                            ) 
+                        },
                         modifier = Modifier
                             .weight(1f)
-                            .padding(end = 8.dp),
+                            .padding(end = 8.dp)
+                            .heightIn(min = 48.dp), // 최소 높이 설정
                         enabled = !isLoading && !isInitializing,
                         colors = TextFieldDefaults.outlinedTextFieldColors(
                             focusedBorderColor = NavyBlue,
                             unfocusedBorderColor = Color.LightGray,
-                            backgroundColor = Color.White
+                            backgroundColor = Color.White,
+                            textColor = Color.Black
+                        ),
+                        textStyle = MaterialTheme.typography.body1.copy(
+                            lineHeight = 18.sp, // 줄 간격 조정
+                            textAlign = TextAlign.Start // 텍스트 정렬 시작점으로
                         ),
                         maxLines = 3
                     )
