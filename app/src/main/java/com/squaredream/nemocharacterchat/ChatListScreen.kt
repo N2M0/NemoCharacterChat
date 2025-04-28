@@ -41,6 +41,8 @@ fun ChatListScreen(navController: NavController) {
     val context = LocalContext.current
     val preferencesManager = PreferencesManager(context)
 
+    // 자동 세션 초기화 코드 비활성화 (주석 처리)
+    /*
     // 채팅방 목록 화면에 들어오면 모든 캐릭터의 세션을 미리 초기화
     LaunchedEffect(key1 = true) {
         // API 키가 설정되어 있는지 확인
@@ -70,6 +72,7 @@ fun ChatListScreen(navController: NavController) {
             }
         }
     }
+    */
 
     Scaffold(
         topBar = {

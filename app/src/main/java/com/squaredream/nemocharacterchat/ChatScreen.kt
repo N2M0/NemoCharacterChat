@@ -162,7 +162,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 GeminiChatService.clearCharacterChat(characterId)
                 chatHistoryManager.clearChatHistory(characterId)
 
-                // Gemini API로 새 대화 시작
+                // Gemini API로 새 대화 시작 - 간소화된, 최적화된 호출 방식 사용
                 val apiKey = preferencesManager.getApiKey()
                 val initialResponse = GeminiChatService.performInitialExchange(apiKey, characterId)
 
@@ -306,16 +306,10 @@ fun ChatScreen(navController: NavController, characterId: String) {
             }
 
             // STEP 3: 저장된 메시지가 없는 경우 - 새 채팅 시작
-            // 세션이 이미 존재하면 재활용, 없으면 새로 생성
-
-            // 첫 인사말 메시지 가져오기 (세션 재활용 여부와 관계없이 Gemini에서 받아옴)
-            val initialResponse = if (sessionExists) {
-                // 기존 세션이 있으면 getWelcomeMessage 사용 (세션 초기화 없이 인사말만 받아옴)
-                GeminiChatService.getWelcomeMessage(apiKey, characterId)
-            } else {
-                // 세션이 없으면 performInitialExchange 사용 (첫 응답 + 백그라운드 세션 초기화)
-                GeminiChatService.performInitialExchange(apiKey, characterId)
-            }
+            // 세션 작업을 단순화 - getWelcomeMessage는 내부에서 세션 확인 후 자동으로 최적화된 방법 선택
+            
+            // 첫 인사말 메시지 가져오기
+            val initialResponse = GeminiChatService.getWelcomeMessage(apiKey, characterId)
 
             // 진행 상태 업데이트 중지
             progressJob?.cancel()
