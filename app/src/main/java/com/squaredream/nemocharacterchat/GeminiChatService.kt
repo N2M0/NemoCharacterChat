@@ -505,10 +505,14 @@ class GeminiChatService {
             characterId: String = "raiden"
         ): Flow<StreamingChatResponse> = flow {
             try {
+                // 채팅 기록 로깅
+                Log.d(TAG, "Generating response with ${chatHistory.size} history messages")
+                
                 // 병렬 작업 수행
                 coroutineScope {
                     // 세션 초기화를 비동기로 시작
                     val chatJob = async(Dispatchers.IO) {
+                        // 기존 세션 활용 (가능한 경우)
                         initializeCharacterChat(apiKey, characterId)
                     }
 
@@ -526,6 +530,7 @@ class GeminiChatService {
                     var hasError = false
 
                     try {
+                        // 응답 스트리밍 시작
                         characterChat.chat.sendMessageStream(userMessage).collect { chunk ->
                             chunk.text?.let { text ->
                                 // 비동기로 로깅 처리 (응답 속도에 영향 없도록)

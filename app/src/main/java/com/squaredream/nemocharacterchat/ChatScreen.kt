@@ -535,6 +535,9 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 // 내부 대화 내역 최적화 - 이미 초기화 메시지가 포함되어 있음을 확인
                 Log.d("ChatScreen", "Using optimized session restoration with ${internalChatHistory.size} messages")
 
+                // 현재 전송하는 사용자 메시지는 아직 internalChatHistory에 포함시키지 않음
+                // restoreSession 함수는 이전 대화 내역만 필요함
+
                 // 이전 대화 내역을 모두 전송하여 컨텍스트 복원
                 val success = GeminiChatService.restoreSession(
                     apiKey = apiKey,
@@ -563,8 +566,9 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 needsSessionRestoration = false
                 savedMessagesLoaded = false
                 
-                // 내부 대화 내역 업데이트 - 새 사용자 메시지 추가
-                internalChatHistory = internalChatHistory + userMessage
+                // 이 시점에서는 userMessage를 내부 채팅 기록에 추가하지 않음
+                // 응답을 받은 후 userMessage와 함께 추가됨
+                Log.d("ChatScreen", "Session restored successfully, proceeding with message processing")
             }
 
             // 스트리밍 API 호출 및 실시간 업데이트
@@ -572,11 +576,14 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 // 스트리밍 응답 시작
                 var finalResponse = ""
                 var hasError = false
+                
+                // 채팅 기록 로깅
+                Log.d("ChatScreen", "Sending message with ${internalChatHistory.size} history messages")
 
                 GeminiChatService.generateResponseStream(
                     apiKey = apiKey,
                     userMessage = textToSend,
-                    chatHistory = internalChatHistory,
+                    chatHistory = internalChatHistory, // 채팅 기록 전달
                     characterId = characterId
                 ).collect { streamResponse ->
                     if (streamResponse.error != null) {
@@ -627,18 +634,25 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     coroutineScope.launch {
                         try {
                             // 내부 채팅 기록 업데이트 (백그라운드에서 처리)
-                            internalChatHistory = if (internalChatHistory.isEmpty()) {
+                            if (internalChatHistory.isEmpty()) {
                                 // 첫 대화인 경우, 첫 AI 응답(인사말)부터 시작
                                 val firstAiMessage = messages.firstOrNull { it.type == MessageType.RECEIVED }
                                 if (firstAiMessage != null) {
-                                    listOf(firstAiMessage, userMessage, finalAiMessage)
+                                    internalChatHistory = listOf(firstAiMessage, userMessage, finalAiMessage)
                                 } else {
-                                    listOf(userMessage, finalAiMessage)
+                                    internalChatHistory = listOf(userMessage, finalAiMessage)
                                 }
                             } else {
-                                // 기존 대화가 있는 경우, 새 메시지만 추가
-                                internalChatHistory + listOf(finalAiMessage)
+                                // 기존 대화가 있는 경우, 사용자 메시지와 AI 응답을 함께 추가
+                                // 사용자 메시지가 아직 추가되지 않았다면 추가 (세션 복원 시에는 이미 추가됨)
+                                if (!internalChatHistory.contains(userMessage)) {
+                                    internalChatHistory = internalChatHistory + userMessage
+                                }
+                                // AI 응답 추가
+                                internalChatHistory = internalChatHistory + finalAiMessage
                             }
+                            
+                            Log.d("ChatScreen", "Updated internal chat history, now contains ${internalChatHistory.size} messages")
 
                             // 채팅 내역 저장 (별도 백그라운드 작업으로 분리)
                             chatHistoryManager.saveChatHistory(characterId, messages)
