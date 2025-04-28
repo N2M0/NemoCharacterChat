@@ -83,17 +83,6 @@ fun ChatScreen(navController: NavController, characterId: String) {
     val messages = remember { mutableStateListOf<Message>() }
     var internalChatHistory by remember { mutableStateOf<List<Message>>(emptyList()) }
     var newMessageText by remember { mutableStateOf("") }
-    
-    // 키보드 상태 감지
-    val imeState = WindowInsets.ime.getBottom(LocalDensity.current)
-    
-    // 키보드가 올라올 때 스크롤 위치 조정
-    LaunchedEffect(imeState) {
-        if (imeState > 0 && messages.isNotEmpty()) {
-            // 키보드가 올라왔고 메시지가 있을 때만 스크롤 조정
-            scrollState.animateScrollToItem(messages.size - 1)
-        }
-    }
 
     // 로딩 상태
     var isLoading by remember { mutableStateOf(false) }
