@@ -30,6 +30,7 @@ import com.squaredream.nemocharacterchat.MainApplication
 import com.squaredream.nemocharacterchat.R
 import com.squaredream.nemocharacterchat.data.ChatRoom
 import com.squaredream.nemocharacterchat.data.PreferencesManager
+import com.squaredream.nemocharacterchat.ui.theme.NavyBlue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -73,11 +74,13 @@ fun ChatListScreen(navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("채팅") },
-                backgroundColor = Color.White,
-                elevation = 1.dp
+                title = { Text("채팅", color = Color.White) },
+                backgroundColor = NavyBlue,
+                contentColor = Color.White,
+                elevation = 4.dp
             )
-        }
+        },
+        backgroundColor = Color.White
     ) { paddingValues ->
         // 채팅방 목록 데이터
         val chatRooms = listOf(

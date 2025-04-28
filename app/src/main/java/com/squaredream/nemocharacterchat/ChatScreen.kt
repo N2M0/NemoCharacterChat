@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -36,6 +37,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import android.util.Log
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.Job
@@ -44,6 +46,8 @@ import kotlinx.coroutines.isActive
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.squaredream.nemocharacterchat.ui.theme.NavyBlue
+import com.squaredream.nemocharacterchat.ui.theme.IconTextColor
 
 // 시간 포맷팅 함수 - 전역 유틸리티 함수로 선언
 fun getCurrentTime(): String {
@@ -656,46 +660,54 @@ fun ChatScreen(navController: NavController, characterId: String) {
         }
     }
 
-    // ===== UI 구성 =====
-    Column(modifier = Modifier.fillMaxSize()) {
-        // 상단 앱바 (메뉴 추가)
-        TopAppBar(
-            title = {
-                Text(text = character.name)  // 이름만 표시
-            },
-            navigationIcon = {
-                IconButton(onClick = { navController.popBackStack() }) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "뒤로 가기")
-                }
-            },
-            actions = {
-                // 메뉴 아이콘 추가
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "메뉴")
-                }
-
-                // 드롭다운 메뉴
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false }
-                ) {
-                    DropdownMenuItem(onClick = {
-                        menuExpanded = false
-                        showConfirmationDialog = true
-                    }) {
-                        Text("채팅 초기화")
+    // ===== UI 렌더링 =====
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(text = character.name, color = Color.White) },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowBack,
+                            contentDescription = "뒤로 가기",
+                            tint = Color.White
+                        )
                     }
-                }
-            },
-            backgroundColor = Color.White,
-            elevation = 1.dp
-        )
+                },
+                actions = {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "메뉴",
+                            tint = Color.White
+                        )
+                    }
 
+                    // 드롭다운 메뉴
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        DropdownMenuItem(onClick = {
+                            menuExpanded = false
+                            showConfirmationDialog = true
+                        }) {
+                            Text("대화 초기화")
+                        }
+                    }
+                },
+                backgroundColor = NavyBlue,
+                contentColor = Color.White,
+                elevation = 4.dp
+            )
+        },
+        backgroundColor = Color.White
+    ) { paddingValues ->
         // 채팅 영역
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .weight(1f)
+                .padding(paddingValues)
         ) {
             // 메시지 목록
             LazyColumn(
@@ -704,7 +716,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 4.dp),
                 state = scrollState,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(top = 8.dp, bottom = 70.dp)
             ) {
                 items(messages, key = { it.id }) { message ->
@@ -717,38 +729,48 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 }
             }
 
-            // 하단 입력 영역
-            Column(
+            // 메시지 입력 영역 (하단에 고정)
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .background(Color.White)
+                    .padding(horizontal = 8.dp, vertical = 9.dp)
+                    .imePadding() // 키보드가 올라올 때 입력 필드 위치 조정
             ) {
-                Divider(color = Color.Transparent)
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 8.dp)
-                        .imePadding(),
+                        .fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 메시지 입력 필드 - 초기화 중에도 입력 가능하게 수정
-                    TextField(
+                    // 메시지 입력 필드
+                    OutlinedTextField(
                         value = newMessageText,
-                        onValueChange = { newMessageText = it }, // 항상 입력 허용
-                        placeholder = { Text(placeholderText) },
+                        onValueChange = { newMessageText = it },
+                        placeholder = { 
+                            Text(
+                                text = placeholderText, 
+                                color = Color.Gray
+                            ) 
+                        },
                         modifier = Modifier
                             .weight(1f)
-                            .padding(end = 8.dp),
-                        colors = TextFieldDefaults.textFieldColors(
-                            backgroundColor = Color.LightGray.copy(alpha = 0.2f),
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            cursorColor = MaterialTheme.colors.primary
+                            .padding(end = 8.dp)
+                            .heightIn(min = 56.dp), // 최소 높이만 설정하고 최대 높이는 제한 없음
+                        enabled = !isLoading && !isInitializing,
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            focusedBorderColor = NavyBlue,
+                            unfocusedBorderColor = Color.LightGray,
+                            backgroundColor = Color.White,
+                            textColor = Color.Black,
+                            cursorColor = NavyBlue // 커서 색상 지정
                         ),
-                        shape = RoundedCornerShape(24.dp),
-                        singleLine = true,
-                        enabled = true // 항상 활성화
+                        textStyle = MaterialTheme.typography.body1.copy(
+                            fontSize = 16.sp,
+                            lineHeight = 24.sp // 줄 간격 넉넉하게 조정
+                        ),
+                        maxLines = 4, // 최대 4줄까지 표시
+                        singleLine = false, // 여러 줄 입력 가능하도록 설정
+                        shape = RoundedCornerShape(24.dp)
                     )
 
                     // 전송 버튼/로딩 인디케이터
@@ -757,7 +779,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                             .size(48.dp)
                             .background(
                                 color = if (newMessageText.isNotBlank() && !isLoading && !isInitializing)
-                                    MaterialTheme.colors.primary
+                                    NavyBlue
                                 else Color.Gray,
                                 shape = CircleShape
                             ),
@@ -767,7 +789,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                             // 로딩 중 인디케이터
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),
-                                color = Color.White,
+                                color = IconTextColor,
                                 strokeWidth = 2.dp
                             )
                         } else {
@@ -780,7 +802,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                                 Icon(
                                     imageVector = Icons.Filled.Send,
                                     contentDescription = "전송",
-                                    tint = Color.White
+                                    tint = IconTextColor
                                 )
                             }
                         }
@@ -827,7 +849,7 @@ fun MessageItem(message: Message, character: Character? = null) {
                 painter = painterResource(id = character.profileImage),
                 contentDescription = "${character.name} 프로필",
                 modifier = Modifier
-                    .size(60.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .padding(bottom = 2.dp),
                 contentScale = ContentScale.Crop
@@ -850,20 +872,37 @@ fun MessageItem(message: Message, character: Character? = null) {
             }
 
             // 메시지 말풍선
+            val bubbleColor = if (message.type == MessageType.SENT) 
+                Color(0xFFFFF599) // 노란색 - 보낸 메시지
+            else 
+                Color(0xFFE8F1F8) // 연한 파란색 - 받은 메시지
+            
+            val bubbleBorderColor = if (message.type == MessageType.SENT)
+                Color(0xFFEFE7A0) // 노란색 테두리 - 보낸 메시지
+            else
+                Color(0xFFD8E6F1) // 연한 파란색 테두리 - 받은 메시지
+
             Box(
                 modifier = Modifier
                     .widthIn(max = 260.dp)
                     .clip(
                         RoundedCornerShape(
-                            topStart = 16.dp,
+                            topStart = if (message.type == MessageType.SENT) 16.dp else 0.dp,
                             topEnd = 16.dp,
-                            bottomStart = if (message.type == MessageType.SENT) 16.dp else 0.dp,
-                            bottomEnd = if (message.type == MessageType.SENT) 0.dp else 16.dp
+                            bottomStart = 16.dp,
+                            bottomEnd = 16.dp
                         )
                     )
-                    .background(
-                        if (message.type == MessageType.SENT) Color(0xFFFFE94A) // 노란색
-                        else Color(0xFFFFFFFF) // 흰색
+                    .background(bubbleColor)
+                    .border(
+                        width = 0.5.dp,
+                        color = bubbleBorderColor,
+                        shape = RoundedCornerShape(
+                            topStart = if (message.type == MessageType.SENT) 16.dp else 0.dp,
+                            topEnd = 16.dp,
+                            bottomStart = 16.dp,
+                            bottomEnd = 16.dp
+                        )
                     )
                     .padding(12.dp)
             ) {
