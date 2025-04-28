@@ -3,16 +3,19 @@ package com.squaredream.nemocharacterchat.data
 /**
  * 채팅방 정보를 담는 데이터 클래스
  *
- * @param id 채팅방 고유 ID
- * @param name 캐릭터 이름
+ * @param characterId 캐릭터 고유 ID
  * @param lastMessage 마지막 메시지
  * @param time 마지막 메시지 시간
- * @param profileImage 프로필 이미지 리소스 ID
  */
 data class ChatRoom(
-    val id: String,
-    val name: String,
+    val characterId: String,
     val lastMessage: String,
-    val time: String,
-    val profileImage: Int
-)
+    val time: String
+) {
+    /**
+     * 채팅방에 해당하는 캐릭터 정보를 반환합니다.
+     */
+    fun getCharacter(): Character? {
+        return CharacterRepository.getCharacterById(characterId)
+    }
+}

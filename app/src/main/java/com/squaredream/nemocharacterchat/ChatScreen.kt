@@ -48,6 +48,7 @@ import java.util.Date
 import java.util.Locale
 import com.squaredream.nemocharacterchat.ui.theme.NavyBlue
 import com.squaredream.nemocharacterchat.ui.theme.IconTextColor
+import com.squaredream.nemocharacterchat.data.CharacterRepository
 
 // 시간 포맷팅 함수 - 전역 유틸리티 함수로 선언
 fun getCurrentTime(): String {
@@ -88,23 +89,14 @@ fun ChatScreen(navController: NavController, characterId: String) {
     var savedMessagesLoaded by remember { mutableStateOf(false) }
 
     // ===== 캐릭터 정보 =====
-    val character = when(characterId) {
-        "raiden" -> Character(
-            id = "raiden",
-            name = "라이덴 쇼군",
-            profileImage = R.drawable.raiden
-        )
-        "furina" -> Character(
-            id = "furina",
-            name = "푸리나",
-            profileImage = R.drawable.furina
-        )
-        else -> Character(
-            id = "unknown",
-            name = "알 수 없음",
-            profileImage = R.drawable.raiden
-        )
-    }
+    // CharacterRepository에서 캐릭터 정보 가져오기
+    val character = CharacterRepository.getCharacterById(characterId) ?: Character(
+        id = "unknown",
+        name = "알 수 없음",
+        description = "알 수 없는 캐릭터",
+        profileImage = R.drawable.raiden,
+        prompt = ""
+    )
 
     // ===== 채팅 초기화 함수 =====
     fun resetChat() {
@@ -346,9 +338,8 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 )
 
                 // 내부 대화 기록은 빈 상태로 시작 (사용자의 첫 메시지가 없으므로)
-                // 하지만 AI의 첫 인사말은 포함시켜야 함
-                internalChatHistory = listOf(messages.first())
-                Log.d("ChatScreen", "Started new chat with initial AI greeting in history")
+                internalChatHistory = emptyList()
+                Log.d("ChatScreen", "Started new chat with empty history")
             }
 
             // 초기화 완료
@@ -635,13 +626,8 @@ fun ChatScreen(navController: NavController, characterId: String) {
                         try {
                             // 내부 채팅 기록 업데이트 (백그라운드에서 처리)
                             if (internalChatHistory.isEmpty()) {
-                                // 첫 대화인 경우, 첫 AI 응답(인사말)부터 시작
-                                val firstAiMessage = messages.firstOrNull { it.type == MessageType.RECEIVED }
-                                if (firstAiMessage != null) {
-                                    internalChatHistory = listOf(firstAiMessage, userMessage, finalAiMessage)
-                                } else {
-                                    internalChatHistory = listOf(userMessage, finalAiMessage)
-                                }
+                                // 첫 대화인 경우, 사용자 메시지와 AI 응답만 추가
+                                internalChatHistory = listOf(userMessage, finalAiMessage)
                             } else {
                                 // 기존 대화가 있는 경우, 사용자 메시지와 AI 응답을 함께 추가
                                 // 사용자 메시지가 아직 추가되지 않았다면 추가 (세션 복원 시에는 이미 추가됨)

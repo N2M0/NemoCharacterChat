@@ -29,6 +29,7 @@ import androidx.navigation.NavController
 import com.squaredream.nemocharacterchat.MainApplication
 import com.squaredream.nemocharacterchat.R
 import com.squaredream.nemocharacterchat.data.ChatRoom
+import com.squaredream.nemocharacterchat.data.CharacterRepository
 import com.squaredream.nemocharacterchat.data.PreferencesManager
 import com.squaredream.nemocharacterchat.ui.theme.NavyBlue
 import kotlinx.coroutines.Dispatchers
@@ -85,23 +86,15 @@ fun ChatListScreen(navController: NavController) {
         },
         backgroundColor = Color.White
     ) { paddingValues ->
-        // 채팅방 목록 데이터
-        val chatRooms = listOf(
+        // 캐릭터 데이터로부터 채팅방 목록 생성
+        val characters = CharacterRepository.getAllCharacters()
+        val chatRooms = characters.map { character ->
             ChatRoom(
-                id = "raiden",
-                name = "라이덴 쇼군",
-                lastMessage = "이나즈마성 천수각에서 만날 수 있는 번개 신",
-                time = " ",
-                profileImage = R.drawable.raiden
-            ),
-            ChatRoom(
-                id = "furina",
-                name = "푸리나",
-                lastMessage = "에피클레스 오페라 하우스에서 만날 수 있는 물의 신?",
-                time = "",
-                profileImage = R.drawable.furina
+                characterId = character.id,
+                lastMessage = character.description,
+                time = ""
             )
-        )
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -113,7 +106,7 @@ fun ChatListScreen(navController: NavController) {
                     chatRoom = chatRoom,
                     onClick = {
                         // 채팅방 ID를 통해 채팅 화면으로 이동
-                        navController.navigate("chat_screen/${chatRoom.id}")
+                        navController.navigate("chat_screen/${chatRoom.characterId}")
                     }
                 )
             }
@@ -126,61 +119,66 @@ fun ChatRoomItem(
     chatRoom: ChatRoom,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // 프로필 이미지
-        Image(
-            painter = painterResource(id = chatRoom.profileImage),
-            contentDescription = "${chatRoom.name} 프로필",
+    // 캐릭터 정보 가져오기
+    val character = chatRoom.getCharacter()
+    
+    if (character != null) {
+        Row(
             modifier = Modifier
-                .size(55.dp)
-                .clip(CircleShape),
-            contentScale = ContentScale.Crop
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 프로필 이미지
+            Image(
+                painter = painterResource(id = character.profileImage),
+                contentDescription = "${character.name} 프로필",
+                modifier = Modifier
+                    .size(55.dp)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+
+            // 채팅방 정보 (이름, 마지막 메시지)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 10.dp)
+            ) {
+                Text(
+                    text = character.name,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = chatRoom.lastMessage,
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // 시간 표시
+            Column(
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    text = chatRoom.time,
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
+        }
+
+        // 구분선 추가
+        Divider(
+            modifier = Modifier.padding(start = 80.dp),
+            color = Color.LightGray.copy(alpha = 0.5f)
         )
-
-        // 채팅방 정보 (이름, 마지막 메시지)
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 10.dp)
-        ) {
-            Text(
-                text = chatRoom.name,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = chatRoom.lastMessage,
-                fontSize = 14.sp,
-                color = Color.Gray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        // 시간 표시
-        Column(
-            horizontalAlignment = Alignment.End
-        ) {
-            Text(
-                text = chatRoom.time,
-                fontSize = 12.sp,
-                color = Color.Gray
-            )
-        }
     }
-
-    // 구분선 추가
-    Divider(
-        modifier = Modifier.padding(start = 80.dp),
-        color = Color.LightGray.copy(alpha = 0.5f)
-    )
 }
