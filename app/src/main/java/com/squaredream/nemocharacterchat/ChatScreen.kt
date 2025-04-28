@@ -49,6 +49,15 @@ import java.util.Locale
 import com.squaredream.nemocharacterchat.ui.theme.NavyBlue
 import com.squaredream.nemocharacterchat.ui.theme.IconTextColor
 import com.squaredream.nemocharacterchat.data.CharacterRepository
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.statusBars
 
 // 시간 포맷팅 함수 - 전역 유틸리티 함수로 선언
 fun getCurrentTime(): String {
@@ -69,11 +78,22 @@ fun ChatScreen(navController: NavController, characterId: String) {
     // 스크롤 상태
     val scrollState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-
-    // 채팅 상태
+    
+    // 채팅 상태 - 변수 정의 위치 변경
     val messages = remember { mutableStateListOf<Message>() }
     var internalChatHistory by remember { mutableStateOf<List<Message>>(emptyList()) }
     var newMessageText by remember { mutableStateOf("") }
+    
+    // 키보드 상태 감지
+    val imeState = WindowInsets.ime.getBottom(LocalDensity.current)
+    
+    // 키보드가 올라올 때 스크롤 위치 조정
+    LaunchedEffect(imeState) {
+        if (imeState > 0 && messages.isNotEmpty()) {
+            // 키보드가 올라왔고 메시지가 있을 때만 스크롤 조정
+            scrollState.animateScrollToItem(messages.size - 1)
+        }
+    }
 
     // 로딩 상태
     var isLoading by remember { mutableStateOf(false) }
@@ -706,18 +726,21 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 },
                 backgroundColor = NavyBlue,
                 contentColor = Color.White,
-                elevation = 4.dp
+                elevation = 4.dp,
+                modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
             )
         },
-        backgroundColor = Color.White
+        backgroundColor = Color.White,
+        modifier = Modifier.systemBarsPadding()
     ) { paddingValues ->
         // 채팅 영역
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .windowInsetsPadding(WindowInsets.navigationBars)
         ) {
-            // 메시지 목록
+            // 메시지 목록 - 키보드가 올라올 때 내용이 위로 올라가도록 설정
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -725,7 +748,10 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     .padding(bottom = 4.dp),
                 state = scrollState,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 70.dp)
+                contentPadding = PaddingValues(
+                    top = 8.dp,
+                    bottom = 70.dp + WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+                )
             ) {
                 items(messages, key = { it.id }) { message ->
                     // 캐릭터 메시지일 경우에만 character 전달
@@ -743,7 +769,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
                     .padding(horizontal = 8.dp, vertical = 9.dp)
-                    .imePadding() // 키보드가 올라올 때 입력 필드 위치 조정
+                    .windowInsetsPadding(WindowInsets.ime)
             ) {
                 Row(
                     modifier = Modifier
