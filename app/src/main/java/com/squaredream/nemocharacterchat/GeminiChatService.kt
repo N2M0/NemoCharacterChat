@@ -368,7 +368,7 @@ class GeminiChatService {
 
         /**
          * 세션을 복원하고 이전 대화 내역을 전송합니다.
-         * forceReinitialize 매개변수로 세션 재초기화 여부를 제어합니다.
+         * 이미 초기화 프롬프트가 메시지 내역에 포함되어 있으면 중복 전송하지 않도록 최적화
          *
          * @param apiKey API 키
          * @param characterId 캐릭터 ID
@@ -385,45 +385,49 @@ class GeminiChatService {
                 Log.d(TAG, "Restoring session for character: $characterId with ${savedMessages.size} messages")
                 Log.d(TAG, "Force reinitialization: $forceReinitialize")
 
-                // 1. 세션 초기화 작업 시작
-                val characterChat = initializeCharacterChat(apiKey, characterId, forceReinitialize)
-
-                // 2. 복원할 메시지 필터링
+                // 1. 복원할 메시지 필터링 - 첫번째 AI 응답은 초기화 프롬프트의 결과이므로 포함
                 val messagesToRestore = savedMessages.filter { it.id != "1" }
 
                 // 메시지가 없으면 복원 완료 (새 대화 시작)
                 if (messagesToRestore.isEmpty()) {
+                    // 세션만 초기화하고 종료
+                    val characterChat = initializeCharacterChat(apiKey, characterId, forceReinitialize)
                     Log.d(TAG, "No messages to restore. Session initialized with persona only.")
                     return@withContext true
                 }
 
                 try {
-                    // 3. 모델 가져오기
+                    // 2. 모델 가져오기
                     val model = getOrCreateModel(apiKey)
 
                     // 캐릭터 프롬프트 가져오기
                     val characterPrompt = CHARACTER_PROMPTS[characterId] ?: CHARACTER_PROMPTS["raiden"]!!
 
-                    // Chat 객체 생성 시 초기 history를 제공하기 위한 준비
+                    // 3. Chat 객체 생성 시 초기 history를 제공하기 위한 준비
                     val initialHistory = mutableListOf<Content>()
 
-                    // 캐릭터 프롬프트 메시지 추가
-                    initialHistory.add(content {
-                        role = "user"
-                        text(characterPrompt)
-                    })
-
-                    // 첫 번째 AI 응답 추가 (첫 인사말)
+                    // 첫 번째 AI 응답 추출 (첫 인사말)
                     val firstAiMessage = savedMessages.firstOrNull { it.type == MessageType.RECEIVED }
-                    firstAiMessage?.let {
+                    
+                    // 3-1. 캐릭터 프롬프트와 첫 응답이 있는 경우 (정상적인 대화 기록)
+                    if (firstAiMessage != null) {
+                        // 프롬프트를 사용자 메시지로, 첫 응답을 AI 응답으로 설정
+                        initialHistory.add(content {
+                            role = "user"
+                            text(characterPrompt)
+                        })
+                        
                         initialHistory.add(content {
                             role = "model"
-                            text(it.text)
+                            text(firstAiMessage.text)
                         })
+                        
+                        Log.d(TAG, "Added initial prompt and first AI response to history")
                     }
 
-                    // 나머지 메시지들 추가
-                    messagesToRestore.forEach { message ->
+                    // 3-2. 나머지 메시지들 추가 (첫 인사말은 제외하고 실제 사용자-AI 대화만)
+                    val actualConversation = messagesToRestore.filter { it != firstAiMessage }
+                    actualConversation.forEach { message ->
                         val role = if (message.type == MessageType.SENT) "user" else "model"
                         initialHistory.add(content {
                             this.role = role
@@ -431,11 +435,20 @@ class GeminiChatService {
                         })
                     }
 
-                    // 4. 초기 히스토리를 포함한 Chat 객체 생성
+                    // 4. 세션 초기화 및 상태 업데이트
+                    val chatKey = "$characterId:$apiKey"
+                    
+                    if (forceReinitialize) {
+                        // 기존 세션 제거
+                        characterChats.remove(chatKey)
+                        initializedCharacters.remove(chatKey)
+                    }
+
+                    // 5. 초기 히스토리를 포함한 Chat 객체 생성
+                    Log.d(TAG, "Creating new chat with ${initialHistory.size} history items")
                     val newChat = Chat(model, initialHistory)
 
-                    // 5. 캐릭터 채팅 정보 업데이트
-                    val chatKey = "$characterId:$apiKey"
+                    // 6. 캐릭터 채팅 정보 업데이트
                     val updatedChatInfo = CharacterChatInfo(
                         chat = newChat,
                         apiKey = apiKey,
@@ -448,16 +461,19 @@ class GeminiChatService {
                     characterChats[chatKey] = updatedChatInfo
                     initializedCharacters.add(chatKey)
 
-                    Log.d(TAG, "Session restored successfully with all ${messagesToRestore.size} messages using chat history")
+                    Log.d(TAG, "Session restored successfully with history using optimized method")
                     return@withContext true
 
                 } catch (e: Exception) {
                     Log.e(TAG, "Error creating chat history: ${e.message}", e)
 
-                    // 대체 방법: 기존 방식으로 폴백
-                    Log.d(TAG, "Falling back to individual message restoration")
-
-                    // 기존 방식으로 메시지 하나씩 전송
+                    // 예외 발생 시 기존 방식으로 폴백
+                    Log.d(TAG, "Falling back to manual session restoration")
+                    
+                    // 세션 초기화
+                    val characterChat = initializeCharacterChat(apiKey, characterId, forceReinitialize)
+                    
+                    // 기존 방식으로 메시지 하나씩 전송 (사용자 메시지만)
                     messagesToRestore.forEach { message ->
                         try {
                             if (message.type == MessageType.SENT) {
