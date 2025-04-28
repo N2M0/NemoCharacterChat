@@ -734,13 +734,12 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                    .padding(horizontal = 8.dp, vertical = 12.dp)
                     .imePadding() // 키보드가 올라올 때 입력 필드 위치 조정
             ) {
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp),
+                        .fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // 메시지 입력 필드
@@ -750,26 +749,28 @@ fun ChatScreen(navController: NavController, characterId: String) {
                         placeholder = { 
                             Text(
                                 text = placeholderText, 
-                                color = Color.Gray,
-                                modifier = Modifier.padding(top = 0.dp) // 패딩 제거
+                                color = Color.Gray
                             ) 
                         },
                         modifier = Modifier
                             .weight(1f)
                             .padding(end = 8.dp)
-                            .heightIn(min = 48.dp), // 최소 높이 설정
+                            .height(56.dp), // 높이 고정
                         enabled = !isLoading && !isInitializing,
                         colors = TextFieldDefaults.outlinedTextFieldColors(
                             focusedBorderColor = NavyBlue,
                             unfocusedBorderColor = Color.LightGray,
                             backgroundColor = Color.White,
-                            textColor = Color.Black
+                            textColor = Color.Black,
+                            cursorColor = NavyBlue // 커서 색상 지정
                         ),
                         textStyle = MaterialTheme.typography.body1.copy(
-                            lineHeight = 18.sp, // 줄 간격 조정
-                            textAlign = TextAlign.Start // 텍스트 정렬 시작점으로
+                            fontSize = 16.sp,
+                            lineHeight = 24.sp // 줄 간격 넉넉하게 조정
                         ),
-                        maxLines = 3
+                        maxLines = 1, // 한 줄로 제한
+                        singleLine = true, // 한 줄 입력 모드로 설정
+                        shape = RoundedCornerShape(24.dp)
                     )
 
                     // 전송 버튼/로딩 인디케이터
