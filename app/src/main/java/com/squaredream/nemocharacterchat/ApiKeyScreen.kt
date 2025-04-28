@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.Button
+import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.SpanStyle
@@ -47,6 +49,8 @@ import androidx.navigation.compose.rememberNavController
 import com.squaredream.nemocharacterchat.MainApplication
 import com.squaredream.nemocharacterchat.data.GeminiService
 import com.squaredream.nemocharacterchat.data.PreferencesManager
+import com.squaredream.nemocharacterchat.ui.theme.IconTextColor
+import com.squaredream.nemocharacterchat.ui.theme.NavyBlue
 import com.squaredream.nemocharacterchat.ui.theme.NemoCharacterChatTheme
 
 @Composable
@@ -65,15 +69,18 @@ fun ApiKeyScreen(navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("API 키 등록") },
+                title = { Text("API 키 등록", color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
                             imageVector = Icons.Filled.ArrowBack,
-                            contentDescription = "뒤로 가기"
+                            contentDescription = "뒤로 가기",
+                            tint = Color.White
                         )
                     }
-                }
+                },
+                backgroundColor = NavyBlue,
+                contentColor = Color.White
             )
         }
     ) { paddingValues ->
@@ -91,7 +98,7 @@ fun ApiKeyScreen(navController: NavController) {
                 pushStringAnnotation(tag = "URL", annotation = "https://aistudio.google.com/app/apikey")
                 withStyle(
                     style = SpanStyle(
-                        color = MaterialTheme.colors.primary, // 링크 색상
+                        color = NavyBlue, // 링크 색상을 NavyBlue로 변경
                         textDecoration = TextDecoration.Underline // 밑줄 추가
                     )
                 ) {
@@ -159,7 +166,13 @@ fun ApiKeyScreen(navController: NavController) {
                     }
                 },
                 modifier = Modifier.fillMaxWidth(0.7f),
-                enabled = !isLoading
+                enabled = !isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = NavyBlue,
+                    contentColor = IconTextColor,
+                    disabledBackgroundColor = NavyBlue.copy(alpha = 0.6f),
+                    disabledContentColor = IconTextColor.copy(alpha = 0.6f)
+                )
             ) {
                 Text(if (isLoading) "검증 중..." else "API 키 저장")
             }
