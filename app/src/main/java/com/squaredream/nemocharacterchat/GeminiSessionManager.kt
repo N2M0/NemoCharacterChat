@@ -131,15 +131,19 @@ class GeminiSessionManager(
 
     /**
      * 앱 시작 시 API 키를 초기화하고 기본 세션을 준비합니다.
+     * 자동 세션 초기화는 비활성화되었습니다.
      */
     fun initialize(apiKey: String) {
         this.apiKey = apiKey
-        Log.d(TAG, "GeminiSessionManager initialized with API key")
+        Log.d(TAG, "GeminiSessionManager initialized with API key (but auto-session creation disabled)")
 
+        // 자동 세션 준비 비활성화
+        /*
         // 앱 시작 시 모든 캐릭터 세션을 백그라운드에서 준비
         viewModelScope.launch(Dispatchers.IO) {
             getOrCreateSharedSession(apiKey, forceCreate = false)
         }
+        */
     }
 
     /**
@@ -190,6 +194,8 @@ class GeminiSessionManager(
 
             Log.d(TAG, "API key updated and session cleared")
 
+            // 자동 세션 준비 비활성화
+            /*
             // 새 API 키로 세션 미리 로드
             viewModelScope.launch(Dispatchers.IO) {
                 try {
@@ -198,6 +204,7 @@ class GeminiSessionManager(
                     Log.e(TAG, "Failed to preload session with new API key: ${e.message}")
                 }
             }
+            */
         }
     }
 
