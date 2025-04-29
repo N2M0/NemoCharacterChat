@@ -49,6 +49,14 @@ import java.util.Locale
 import com.squaredream.nemocharacterchat.ui.theme.NavyBlue
 import com.squaredream.nemocharacterchat.ui.theme.IconTextColor
 import com.squaredream.nemocharacterchat.data.CharacterRepository
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.statusBars
 
 // 시간 포맷팅 함수 - 전역 유틸리티 함수로 선언
 fun getCurrentTime(): String {
@@ -69,8 +77,8 @@ fun ChatScreen(navController: NavController, characterId: String) {
     // 스크롤 상태
     val scrollState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-
-    // 채팅 상태
+    
+    // 채팅 상태 - 변수 정의 위치 변경
     val messages = remember { mutableStateListOf<Message>() }
     var internalChatHistory by remember { mutableStateOf<List<Message>>(emptyList()) }
     var newMessageText by remember { mutableStateOf("") }
@@ -188,7 +196,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 placeholderText = "메시지 입력"
 
                 // 새 메시지로 스크롤
-                scrollState.animateScrollToItem(0)
+                scrollState.scrollToItem(0) // 애니메이션 없이 즉시 스크롤
 
             } catch (e: Exception) {
                 Log.e("ChatScreen", "Error resetting chat: ${e.message}", e)
@@ -297,8 +305,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 placeholderText = "메시지 입력"
 
                 // 스크롤 맨 아래로
-                delay(100) // UI 업데이트 대기
-                scrollState.animateScrollToItem(messages.size - 1)
+                scrollState.scrollToItem(0) // 애니메이션 없이 즉시 스크롤
 
                 return@LaunchedEffect
             }
@@ -470,7 +477,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
 
         // 스크롤 처리
         coroutineScope.launch {
-            scrollState.animateScrollToItem(messages.size - 1)
+            scrollState.scrollToItem(0) // 애니메이션 없이 즉시 스크롤
         }
 
         // AI 응답 메시지를 미리 추가 (스트리밍 업데이트를 위한 빈 메시지)
@@ -513,7 +520,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                         messages[messages.lastIndex] = updatedMessage
 
                         // 스크롤 유지
-                        scrollState.animateScrollToItem(messages.size - 1)
+                        scrollState.scrollToItem(0) // 애니메이션 없이 즉시 스크롤
                     } else {
                         // 마지막 메시지 도달 시 더 이상 변경하지 않음
                         break
@@ -605,7 +612,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
 
                                 // 스크롤 유지
                                 coroutineScope.launch {
-                                    scrollState.animateScrollToItem(messages.size - 1)
+                                    scrollState.scrollToItem(0) // 애니메이션 없이 즉시 스크롤
                                 }
                             }
                         }
@@ -706,28 +713,36 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 },
                 backgroundColor = NavyBlue,
                 contentColor = Color.White,
-                elevation = 4.dp
+                elevation = 4.dp,
+                modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
             )
         },
-        backgroundColor = Color.White
+        backgroundColor = Color.White,
+        modifier = Modifier.systemBarsPadding()
     ) { paddingValues ->
         // 채팅 영역
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .windowInsetsPadding(WindowInsets.navigationBars)
         ) {
-            // 메시지 목록
+            // 메시지 목록 - 키보드가 올라올 때 내용이 위로 올라가도록 설정
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 4.dp),
+                    .padding(bottom = 4.dp)
+                    .imePadding(),
+                reverseLayout = true,
                 state = scrollState,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 70.dp)
+                contentPadding = PaddingValues(
+                    top = 8.dp,
+                    bottom = 70.dp
+                )
             ) {
-                items(messages, key = { it.id }) { message ->
+                items(messages.reversed(), key = { it.id }) { message ->
                     // 캐릭터 메시지일 경우에만 character 전달
                     if (message.type == MessageType.RECEIVED && message.sender != "티바트 시스템") {
                         MessageItem(message = message, character = character)
@@ -743,7 +758,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
                     .padding(horizontal = 8.dp, vertical = 9.dp)
-                    .imePadding() // 키보드가 올라올 때 입력 필드 위치 조정
+                    .imePadding()
             ) {
                 Row(
                     modifier = Modifier
