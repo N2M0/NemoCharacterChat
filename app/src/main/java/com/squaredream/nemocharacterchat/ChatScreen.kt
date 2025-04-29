@@ -55,7 +55,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.statusBars
 
@@ -734,12 +733,14 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 4.dp),
+                    .padding(bottom = 4.dp)
+                    .imePadding(),
+                reverseLayout = true,
                 state = scrollState,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(
                     top = 8.dp,
-                    bottom = 70.dp + WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+                    bottom = 70.dp
                 )
             ) {
                 items(messages, key = { it.id }) { message ->
@@ -758,7 +759,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
                     .padding(horizontal = 8.dp, vertical = 9.dp)
-                    .windowInsetsPadding(WindowInsets.ime)
+                    .imePadding()
             ) {
                 Row(
                     modifier = Modifier
