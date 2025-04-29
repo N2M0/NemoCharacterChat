@@ -743,7 +743,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                     bottom = 70.dp
                 )
             ) {
-                items(messages, key = { it.id }) { message ->
+                items(messages.reversed(), key = { it.id }) { message ->
                     // 캐릭터 메시지일 경우에만 character 전달
                     if (message.type == MessageType.RECEIVED && message.sender != "티바트 시스템") {
                         MessageItem(message = message, character = character)
