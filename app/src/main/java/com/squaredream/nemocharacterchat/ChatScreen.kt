@@ -196,7 +196,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 placeholderText = "메시지 입력"
 
                 // 새 메시지로 스크롤
-                scrollState.animateScrollToItem(0)
+                scrollState.scrollToItem(0) // 애니메이션 없이 즉시 스크롤
 
             } catch (e: Exception) {
                 Log.e("ChatScreen", "Error resetting chat: ${e.message}", e)
@@ -305,8 +305,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                 placeholderText = "메시지 입력"
 
                 // 스크롤 맨 아래로
-                delay(100) // UI 업데이트 대기
-                scrollState.animateScrollToItem(messages.size - 1)
+                scrollState.scrollToItem(0) // 애니메이션 없이 즉시 스크롤
 
                 return@LaunchedEffect
             }
@@ -478,7 +477,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
 
         // 스크롤 처리
         coroutineScope.launch {
-            scrollState.animateScrollToItem(messages.size - 1)
+            scrollState.scrollToItem(0) // 애니메이션 없이 즉시 스크롤
         }
 
         // AI 응답 메시지를 미리 추가 (스트리밍 업데이트를 위한 빈 메시지)
@@ -521,7 +520,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
                         messages[messages.lastIndex] = updatedMessage
 
                         // 스크롤 유지
-                        scrollState.animateScrollToItem(messages.size - 1)
+                        scrollState.scrollToItem(0) // 애니메이션 없이 즉시 스크롤
                     } else {
                         // 마지막 메시지 도달 시 더 이상 변경하지 않음
                         break
@@ -613,7 +612,7 @@ fun ChatScreen(navController: NavController, characterId: String) {
 
                                 // 스크롤 유지
                                 coroutineScope.launch {
-                                    scrollState.animateScrollToItem(messages.size - 1)
+                                    scrollState.scrollToItem(0) // 애니메이션 없이 즉시 스크롤
                                 }
                             }
                         }
